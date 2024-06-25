@@ -90,3 +90,4 @@ specified periods.
 4. Graph of CPU usage over one month.
 
 By following this structure, you can draw up a complete and detailed analysis of CPU and memory usage using the data collected by Prometheus
+https://medium.com/cuddle-ai/async-architecture-with-fastapi-celery-and-rabbitmq-c7d029030377
