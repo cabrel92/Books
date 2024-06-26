@@ -1,0 +1,105 @@
+# this scripts is used to push data to api using the python requests library.
+
+
+import requests
+import json
+from setting import settings
+
+
+backend_url = "http://5.196.67.166:8000/v1/log/simple-log"
+api_key = settings.get("API_KEYS")
+
+# Données à envoyer
+data_to_send = {
+  "short_message": "This is a summary message.",
+  "full_message": "This is a full message that gives more information of what the log is about.",
+  "level_message": "INFO",
+  "code_message": 40,
+  "emission_date": "2022-09-15T15:53:00+05:00",
+  "attributes": {
+    "username": "my_username",
+    "phone": 7070707
+  }
+}
+
+# En-tête avec la clé API
+headers = {
+    "Content-Type": "application/json",
+    "api_key": "ea43566ae4fe2729"
+}
+
+# Convertir les données en format JSON
+data_json = json.dumps(data_to_send)
+
+# Envoi de la requête POST
+response = requests.post(backend_url, data=data_json, headers=headers)
+
+# Vérifier la réponse du serveur
+if response.status_code == 200:
+    print("Données envoyées avec succès au backend FastAPI.")
+else:
+    print(f"Échec de l'envoi des données. Code d'état : {response.status_code}")
+    print(response.text)
+
+
+
+
+
+from fastapi import FastAPI, Request
+import asyncio
+
+
+app = FastAPI()
+
+@app.post("/endpoint")
+async def receive_stream(request: Request):
+    async for chunk in request.stream():
+        print(chunk)
+    return {"status": "received"}
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
+
+
+
+# python script to implement __call__ method
+
+from typing import Any
+
+
+class Adder:
+    """this class implement add functionality, it is a special method in python that is
+    call as a function to ease the computation.
+    value: int
+    adden: int
+    return: int, the sum of two value
+    """
+    
+    def  __init__(self, value:int):
+        self.value = value
+    
+    def __call__(self, addend):
+        """python special method, that can be call as a function
+        take a value an addend as input
+
+        Args:
+            addend (_type_): _description_
+
+        Returns:
+            _type_: return a sum of self.value and addend
+            When you create an instance of Adder (e.g., 
+            add_five = Adder(5)), you can then call this instance 
+            like a function (e.g., add_five(10)), 
+            which internally calls the __call__ method 
+            and returns the result.
+        """
+        return self.value+addend
+    
+if __name__=="__main__":
+    added = Adder(5)
+    print(added)
+    
+    result = added(10)
+    print(result)
