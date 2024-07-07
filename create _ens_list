@@ -1,0 +1,105 @@
+You're right, let's clarify the process. The user should select from a list of choices rather than inputting text. To ensure this, we can use a combination of steps to dynamically generate the choices and present them correctly in Jenkins.
+
+Here is the clear and corrected approach:
+
+1. **Generate the List of Environment Names:**
+   The `list_envs.sh` script generates a comma-separated list of environment names.
+   
+2. **Set Up a Choice Parameter:**
+   In the Jenkins pipeline, we dynamically set up a choice parameter for the user to select from.
+
+### Updated `list_envs.sh` Script
+
+This script remains the same and outputs a comma-separated list of directory names:
+
+```bash
+#!/bin/bash
+
+# Directory containing the Python environments
+ENV_DIR="/path/to/your/directory"
+
+# Initialize an empty string to hold the environment names
+env_names=""
+
+# Iterate over each directory in the specified directory
+for dir in "$ENV_DIR"/*; do
+  if [ -d "$dir" ]; then
+    # Extract the directory name using parameter expansion
+    env_name="${dir##*/}"
+    # Append the directory name to the string, separated by a comma
+    env_names+="${env_name},"
+  fi
+done
+
+# Remove the trailing comma
+env_names=${env_names%,}
+
+# Print the result
+echo "$env_names"
+```
+
+### Updated Jenkinsfile
+
+Here’s how to configure the Jenkins pipeline to use the output of the `list_envs.sh` script and present it as a choice parameter:
+
+```groovy
+node {
+    stage('Checkout') {
+        // Checkout the repository
+        checkout scm
+    }
+    
+    stage('Prepare') {
+        // Run the bash script to get the environment names
+        def envNames = sh(script: 'bash scripts/list_envs.sh', returnStdout: true).trim()
+        
+        // Split the environment names into a list
+        def envChoices = envNames.split(',')
+        
+        // Define a multi-choice parameter with the environment names
+        properties([
+            parameters([
+                choice(name: 'PYTHON_ENV', choices: envChoices, description: 'Select Python Environment')
+            ])
+        ])
+    }
+    
+    // Wait for user input
+    def userInput = input(
+        id: 'userInput', message: 'Confirm your environment choice', parameters: [
+            choice(name: 'PYTHON_ENV', choices: envChoices.join('\n'), description: 'Select Python Environment')
+        ]
+    )
+    
+    stage('Build') {
+        echo "Selected Python Environment: ${userInput}"
+        
+        // Use the selected environment for further build steps
+        // Example: Activate the Python environment and run a script
+        sh """
+        source /path/to/your/directory/${userInput}/bin/activate
+        python your_script.py
+        """
+    }
+}
+```
+
+### Explanation:
+
+1. **Checkout Stage:**
+   - Checks out the code from the repository.
+
+2. **Prepare Stage:**
+   - Runs the `list_envs.sh` script to get the environment names.
+   - Splits the comma-separated environment names into a list.
+   - Defines a Jenkins choice parameter (`PYTHON_ENV`) with the environment names as choices.
+
+3. **Input Stage:**
+   - Presents a choice parameter to the user to select the desired environment.
+   - Captures the selected environment name in the `userInput` variable.
+
+4. **Build Stage:**
+   - Uses the selected environment to perform further build steps, such as activating the Python environment and running a script.
+
+This configuration ensures that the user selects from a dynamically generated list of environments, making the Jenkins pipeline interactive and flexible.
+
