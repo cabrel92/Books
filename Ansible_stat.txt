@@ -1,0 +1,160 @@
+The statement `pycharm_check.stat.exists` is used to check if a file or directory exists on the remote machine. It is part of the result returned by the `stat` module in Ansible. The `stat` module is used to gather information about files, directories, and other file system objects.
+
+### Explanation of `stat` Module
+
+When the `stat` module is executed, it gathers various attributes of the specified path and stores them in a registered variable. In this case, the variable is `pycharm_check`. Here’s an example of what the output might look like when using the `stat` module:
+
+```yaml
+- name: Check if PyCharm 2023.1 Community is installed
+  stat:
+    path: "{{ pycharm_directory }}/bin/pycharm.sh"
+  register: pycharm_check
+```
+
+This task checks if the file `{{ pycharm_directory }}/bin/pycharm.sh` exists and registers the result in the variable `pycharm_check`.
+
+### Structure of `pycharm_check`
+
+The `pycharm_check` variable will contain a dictionary with several keys that describe the status of the file or directory. One of these keys is `exists`, which will be `true` if the file or directory exists and `false` otherwise.
+
+### Usage of `pycharm_check.stat.exists`
+
+The `pycharm_check.stat.exists` statement is used in `when` conditions to perform tasks only if the specified file or directory exists. For example:
+
+```yaml
+- name: Backup PyCharm settings
+  when: pycharm_check.stat.exists
+  block:
+    - name: Create backup directory if it does not exist
+      file:
+        path: "{{ pycharm_backup_dir }}"
+        state: directory
+
+    - name: Copy PyCharm settings to backup location
+      copy:
+        src: "{{ item }}"
+        dest: "{{ pycharm_backup_dir }}/{{ item | basename }}"
+        remote_src: yes
+      loop: "{{ pycharm_settings_dirs }}"
+      ignore_errors: yes
+```
+
+In this block:
+
+- The `when: pycharm_check.stat.exists` condition ensures that the tasks within the block are only executed if the file `{{ pycharm_directory }}/bin/pycharm.sh` exists. 
+- If the file exists, the tasks to create a backup directory and copy the settings are executed. 
+- If the file does not exist, these tasks are skipped.
+
+This condition is used to make the playbook idempotent and prevent errors or unnecessary actions when the file or directory in question is not present. It ensures that tasks related to the existing installation of PyCharm are only executed if PyCharm is actually installed.
+
+
+If the old version does not exist, the `file` module will still work fine. The `state: absent` task will complete successfully even if the path does not exist. This is one of the advantages of using the `file` module in Ansible—it handles idempotency well.
+
+However, if you want to ensure that the playbook continues gracefully without unnecessary checks, you can add a condition to check if the symlink exists before attempting to remove it.
+
+Here’s the revised playbook with an additional check to see if the old symlink exists:
+
+### Updated Example Ansible Playbook
+
+```yaml
+---
+- name: Manage PyCharm installation
+  hosts: all
+  become: yes
+
+  vars:
+    pycharm_version: "2023.1"
+    pycharm_directory: "/opt/pycharm"
+    pycharm_settings_dirs:
+      - "{{ lookup('env', 'HOME') }}/.PyCharm{{ pycharm_version }}/config"
+      - "{{ lookup('env', 'HOME') }}/.PyCharm{{ pycharm_version }}/system"
+      - "{{ lookup('env', 'HOME') }}/.config/JetBrains/PyCharm{{ pycharm_version }}"
+      - "{{ lookup('env', 'HOME') }}/.cache/JetBrains/PyCharm{{ pycharm_version }}"
+      - "{{ lookup('env', 'HOME') }}/.local/share/JetBrains/PyCharm{{ pycharm_version }}"
+    pycharm_backup_dir: "/path/to/backup/location"
+    latest_pycharm_url: "https://download.jetbrains.com/python/pycharm-community-2023.2.2.tar.gz"
+    latest_pycharm_dir: "/opt/pycharm-2023.2.2"
+
+  tasks:
+    - name: Check if PyCharm 2023.1 Community is installed
+      stat:
+        path: "{{ pycharm_directory }}/bin/pycharm.sh"
+      register: pycharm_check
+
+    - name: Backup PyCharm settings
+      when: pycharm_check.stat.exists
+      block:
+        - name: Create backup directory if it does not exist
+          file:
+            path: "{{ pycharm_backup_dir }}"
+            state: directory
+
+        - name: Copy PyCharm settings to backup location
+          copy:
+            src: "{{ item }}"
+            dest: "{{ pycharm_backup_dir }}/{{ item | basename }}"
+            remote_src: yes
+          loop: "{{ pycharm_settings_dirs }}"
+          ignore_errors: yes
+
+    - name: Uninstall PyCharm 2023.1 Community Edition
+      when: pycharm_check.stat.exists
+      block:
+        - name: Remove PyCharm installation directory
+          file:
+            path: "{{ pycharm_directory }}"
+            state: absent
+
+        - name: Remove PyCharm settings
+          file:
+            path: "{{ item }}"
+            state: absent
+          loop: "{{ pycharm_settings_dirs }}"
+          ignore_errors: yes
+
+    - name: Check if old PyCharm symlink exists
+      stat:
+        path: "{{ pycharm_directory }}"
+      register: pycharm_symlink_check
+
+    - name: Remove old PyCharm symlink if it exists
+      when: pycharm_symlink_check.stat.islnk
+      file:
+        path: "{{ pycharm_directory }}"
+        state: absent
+        force: yes
+
+    - name: Download the latest PyCharm Community Edition
+      get_url:
+        url: "{{ latest_pycharm_url }}"
+        dest: /tmp/pycharm-latest.tar.gz
+
+    - name: Extract PyCharm archive
+      unarchive:
+        src: /tmp/pycharm-latest.tar.gz
+        dest: /opt/
+        remote_src: yes
+
+    - name: Symlink the latest PyCharm to a common location
+      file:
+        src: "{{ latest_pycharm_dir }}"
+        dest: "{{ pycharm_directory }}"
+        state: link
+
+    - name: Ensure PyCharm is executable
+      file:
+        path: "{{ pycharm_directory }}/bin/pycharm.sh"
+        mode: '0755'
+```
+
+### Explanation of the New Tasks:
+
+- **Check if old PyCharm symlink exists:**
+  - The `stat` module checks if the `{{ pycharm_directory }}` path exists and is a symlink.
+  - The result is registered to `pycharm_symlink_check`.
+
+- **Remove old PyCharm symlink if it exists:**
+  - The `when` condition checks if `pycharm_symlink_check.stat.islnk` is true.
+  - If it is true, it indicates that `{{ pycharm_directory }}` is a symlink, and the `file` module removes it.
+
+This approach ensures that the playbook handles the existence of the old symlink gracefully, only attempting to remove it if it actually exists.
