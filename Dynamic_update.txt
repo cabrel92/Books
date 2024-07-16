@@ -1,0 +1,113 @@
+To dynamically set the `workdir` in your project based on a user's selection in Jenkins, you need to:
+
+1. Define a Jenkins parameter to capture the user's selection.
+2. Use that parameter to set an environment variable.
+3. Use that environment variable within your project scripts or configuration.
+
+Here's a detailed approach:
+
+### Step 1: Define the Jenkins Parameter
+
+You will define a parameter in your Jenkins pipeline to capture the user's selection.
+
+### Step 2: Extract Paths and Update Parameters
+
+If the choices are dynamic (from a JSON file), you will extract them and set them as choices for the parameter.
+
+### Step 3: Use the Parameter as an Environment Variable
+
+Set the parameter as an environment variable and use it in your build steps.
+
+### Complete Jenkins Pipeline Script
+
+Here’s how you can set this up:
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        // Default workdir, this can be overridden by the user's selection
+        WORKDIR = ''
+    }
+
+    stages {
+        stage('Extract Paths') {
+            steps {
+                script {
+                    // Path to the JSON file
+                    def jsonFilePath = 'path/to/your/jsonfile.json'
+
+                    // Extract paths using the Groovy script
+                    def paths = extractPathsFromJson(jsonFilePath)
+
+                    // Update the choice parameter with the extracted paths
+                    properties([
+                        parameters([
+                            choice(name: 'WORKDIR', choices: paths.join('\n'), description: 'Select the workdir')
+                        ])
+                    ])
+                }
+            }
+        }
+
+        stage('Use Selected Path') {
+            steps {
+                script {
+                    // Set the selected WORKDIR parameter as an environment variable
+                    env.WORKDIR = params.WORKDIR
+
+                    echo "Selected workdir: ${env.WORKDIR}"
+                    
+                    // Example of using the WORKDIR environment variable in a script
+                    sh """
+                        echo "Using workdir: ${env.WORKDIR}"
+                        # Navigate to the selected workdir
+                        cd ${env.WORKDIR}
+                        # Your build steps here
+                        # e.g., running a script in the selected workdir
+                        ./build.sh
+                    """
+                }
+            }
+        }
+    }
+}
+
+// Function to extract paths from the JSON file
+def extractPathsFromJson(jsonFilePath) {
+    // Read and parse the JSON file
+    def jsonFile = new File(jsonFilePath)
+    def jsonContent = new groovy.json.JsonSlurper().parseText(jsonFile.text)
+
+    // Collect paths into a list
+    def paths = []
+    jsonContent.each { project, details ->
+        if (details.path) {
+            paths << details.path
+        }
+    }
+
+    return paths
+}
+```
+
+### Explanation
+
+1. **Environment Block**: 
+    - The `WORKDIR` environment variable is defined and initially empty. This will be overridden by the user's selection.
+
+2. **Extract Paths Stage**:
+    - This stage reads the JSON file and extracts the paths.
+    - The `choice` parameter is updated with the extracted paths.
+
+3. **Use Selected Path Stage**:
+    - The selected `WORKDIR` parameter is assigned to the `env.WORKDIR` environment variable.
+    - The `sh` step uses the `env.WORKDIR` variable to navigate to the selected directory and execute build steps.
+
+### Integration with Your Project
+
+- Ensure your project scripts (e.g., `build.sh`) are designed to work with the `workdir` specified by the environment variable.
+- Modify the `sh` steps as necessary to fit your project's specific build and deployment processes.
+
+This setup will dynamically populate the `WORKDIR` parameter based on the paths extracted from the JSON file and use the selected path as an environment variable throughout your Jenkins pipeline.
