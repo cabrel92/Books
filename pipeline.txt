@@ -1,0 +1,59 @@
+import groovy.json.JsonSlurper
+
+pipeline {
+    agent any
+    
+    parameters {
+        // Define an Active Choices parameter for project names
+        choice(name: 'PROJECT_NAME', choices: getProjectNames(), description: 'Select a project')
+    }
+    
+    stages {
+        stage('Retrieve Project Path') {
+            steps {
+                script {
+                    // Get the chosen project name
+                    def chosenProjectName = params.PROJECT_NAME
+                    
+                    // Read the JSON file and parse it
+                    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+                    def jsonFile = new File(jsonFilePath)
+                    
+                    if (!jsonFile.exists()) {
+                        error "Error: JSON file not found at ${jsonFilePath}"
+                    }
+                    
+                    def jsonContent = jsonFile.text
+                    def jsonSlurper = new JsonSlurper()
+                    def projects = jsonSlurper.parseText(jsonContent)
+                    
+                    // Get the path of the chosen project
+                    def projectPath = projects[chosenProjectName]?.path
+                    
+                    if (projectPath) {
+                        echo "Chosen Project: ${chosenProjectName}"
+                        echo "Project Path: ${projectPath}"
+                    } else {
+                        error "Error: Project path not found for ${chosenProjectName}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+def getProjectNames() {
+    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+    def jsonFile = new File(jsonFilePath)
+    
+    if (!jsonFile.exists()) {
+        return ["Error: JSON file not found"]
+    }
+    
+    def jsonContent = jsonFile.text
+    def jsonSlurper = new JsonSlurper()
+    def projects = jsonSlurper.parseText(jsonContent)
+    def projectNames = projects.keySet().toList()
+    
+    return projectNames
+}
