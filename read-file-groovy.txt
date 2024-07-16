@@ -1,0 +1,114 @@
+To troubleshoot the issue where the Active Choices parameter is showing an empty entry, we need to ensure the Groovy script reads the JSON file correctly and returns the project names properly. Here's a step-by-step guide to diagnose and fix the issue:
+
+1. **Ensure Correct JSON File Path**:
+   Ensure the path to the `projects.json` file is correct and accessible by Jenkins. If the file is in the Jenkins workspace, use a relative path.
+
+2. **Add Logging for Debugging**:
+   Add logging statements in the Groovy script to identify where it might be failing. This can help in understanding if the file is being read correctly and if the JSON parsing is successful.
+
+3. **Check for Groovy Script Syntax and Jenkins Compatibility**:
+   Ensure there are no syntax errors and that the script is compatible with the Jenkins environment.
+
+### Revised Script with Detailed Logging
+
+Here’s a revised script with detailed logging for the Active Choices parameter:
+
+#### Active Choices Parameter Script
+
+1. **Add Active Choices Parameter**:
+   - In the job configuration page, check "This project is parameterized".
+   - Click on "Add Parameter" and choose "Active Choices Parameter".
+   - Set the name to `PROJECT_NAME`.
+   - Set the description if needed.
+   - Choose "Groovy Script" for the "Choices Script".
+   - Enter the following Groovy script:
+
+```groovy
+import groovy.json.JsonSlurper
+
+// Specify the path to the JSON file (use absolute or workspace-relative path)
+def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+
+println "DEBUG: Checking if JSON file exists at: ${jsonFilePath}"
+def jsonFile = new File(jsonFilePath)
+
+if (!jsonFile.exists()) {
+    println "DEBUG: Error: JSON file not found at ${jsonFilePath}"
+    return ["Error: JSON file not found"]
+}
+
+println "DEBUG: JSON file found. Reading content..."
+def jsonContent = jsonFile.text
+
+println "DEBUG: JSON content read successfully."
+def jsonSlurper = new JsonSlurper()
+
+try {
+    def projects = jsonSlurper.parseText(jsonContent)
+    println "DEBUG: JSON content parsed successfully."
+    def projectNames = projects.keySet().toList()
+    println "DEBUG: Project names extracted: ${projectNames}"
+    return projectNames
+} catch (Exception e) {
+    println "DEBUG: Error parsing JSON: ${e.message}"
+    return ["Error: JSON parsing failed"]
+}
+```
+
+2. **Verify and Test the JSON Path**:
+   Ensure the JSON file path is correct. If the file is within the Jenkins workspace, you can use a relative path like:
+
+```groovy
+def jsonFilePath = "${workspace}/projects.json"
+```
+
+3. **Add a Build Step**:
+   - Click on "Add build step" and choose "Execute Groovy script".
+   - Use the following script to access the chosen project name:
+
+```groovy
+// Get the chosen project name from the Jenkins parameter
+def chosenProjectName = build.getEnvironment(listener).get('PROJECT_NAME')
+
+// Print the chosen project name
+println "Chosen Project: ${chosenProjectName}"
+```
+
+### Saving and Running the Job
+
+1. **Save the Job Configuration**:
+   - Save your Jenkins job configuration after adding the scripts.
+
+2. **Build with Parameters**:
+   - Click "Build with Parameters".
+   - Select the project name from the dynamically populated dropdown list and click "Build".
+
+3. **Check the Console Output**:
+   - After the build completes, go to the build's console output to see the debug messages and the chosen project name.
+
+### Example JSON File
+
+Ensure your `projects.json` file is correctly formatted. Here is an example:
+
+```json
+{
+    "Project-1": {
+        "path": "project/nlp/project-1"
+    },
+    "Project-2": {
+        "path": "project/role/project-2"
+    },
+    "Project-3": {
+        "path": "project/machine/project-3"
+    }
+}
+```
+
+### Summary
+
+- **Ensure JSON File Path**: Verify the path to the `projects.json` file.
+- **Add Debugging Logs**: Use detailed logging to troubleshoot any issues.
+- **Verify JSON Parsing**: Ensure the JSON content is parsed correctly and project names are extracted.
+- **Check Permissions**: Ensure Jenkins has the necessary permissions to read the file.
+
+By following these steps, you should be able to identify and fix the issue with the Active Choices parameter showing an empty entry.
