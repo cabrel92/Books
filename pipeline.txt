@@ -57,3 +57,128 @@ def getProjectNames() {
     
     return projectNames
 }
+
+
+
+
+
+
+To use the Groovy script in a Jenkins pipeline instead of a freestyle project, you need to modify the script to fit within a Jenkins pipeline script (Jenkinsfile). Below is a detailed step-by-step guide to achieve this.
+
+### Step 1: Create the Jenkins Pipeline
+
+1. **Create a New Pipeline Job**:
+   - Go to Jenkins Dashboard.
+   - Click on "New Item".
+   - Enter a name for the job and select "Pipeline".
+   - Click "OK".
+
+2. **Configure the Pipeline Job**:
+   - Scroll down to the "Pipeline" section.
+   - Select "Pipeline script" or "Pipeline script from SCM" depending on where you store your Jenkinsfile.
+
+### Step 2: Define the Pipeline Script (Jenkinsfile)
+
+Here's how you can define the Jenkinsfile to include the Active Choices parameter and use it to get the path of the selected project.
+
+#### Jenkinsfile
+
+```groovy
+import groovy.json.JsonSlurper
+
+pipeline {
+    agent any
+    
+    parameters {
+        // Define an Active Choices parameter for project names
+        choice(name: 'PROJECT_NAME', choices: getProjectNames(), description: 'Select a project')
+    }
+    
+    stages {
+        stage('Retrieve Project Path') {
+            steps {
+                script {
+                    // Get the chosen project name
+                    def chosenProjectName = params.PROJECT_NAME
+                    
+                    // Read the JSON file and parse it
+                    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+                    def jsonFile = new File(jsonFilePath)
+                    
+                    if (!jsonFile.exists()) {
+                        error "Error: JSON file not found at ${jsonFilePath}"
+                    }
+                    
+                    def jsonContent = jsonFile.text
+                    def jsonSlurper = new JsonSlurper()
+                    def projects = jsonSlurper.parseText(jsonContent)
+                    
+                    // Get the path of the chosen project
+                    def projectPath = projects[chosenProjectName]?.path
+                    
+                    if (projectPath) {
+                        echo "Chosen Project: ${chosenProjectName}"
+                        echo "Project Path: ${projectPath}"
+                    } else {
+                        error "Error: Project path not found for ${chosenProjectName}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+def getProjectNames() {
+    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+    def jsonFile = new File(jsonFilePath)
+    
+    if (!jsonFile.exists()) {
+        return ["Error: JSON file not found"]
+    }
+    
+    def jsonContent = jsonFile.text
+    def jsonSlurper = new JsonSlurper()
+    def projects = jsonSlurper.parseText(jsonContent)
+    def projectNames = projects.keySet().toList()
+    
+    return projectNames
+}
+```
+
+### Explanation
+
+1. **Pipeline Definition**:
+   - The `pipeline` block defines the pipeline.
+   - The `agent any` directive indicates that the pipeline can run on any available agent.
+
+2. **Parameters Block**:
+   - The `parameters` block defines an Active Choices parameter named `PROJECT_NAME`.
+   - The `getProjectNames` method is called to get the list of project names for the dropdown.
+
+3. **Stages Block**:
+   - The `stages` block contains the pipeline stages.
+   - The `Retrieve Project Path` stage reads the JSON file, parses it, and retrieves the path of the selected project.
+
+4. **getProjectNames Method**:
+   - This method reads the JSON file, parses it, and returns a list of project names.
+
+### Step 3: Save and Run the Pipeline
+
+1. **Save the Pipeline Script**:
+   - Save your Jenkinsfile in the job configuration if you are using the inline editor.
+   - If using SCM, ensure the Jenkinsfile is checked into your repository.
+
+2. **Build with Parameters**:
+   - Click "Build with Parameters".
+   - Select the project name from the dynamically populated dropdown list and click "Build".
+
+3. **Check the Console Output**:
+   - After the build completes, go to the build's console output to see the chosen project name and its path.
+
+### Summary
+
+- **Pipeline Job**: Create a new pipeline job in Jenkins.
+- **Define Jenkinsfile**: Use the provided script to define your Jenkinsfile.
+- **Build with Parameters**: Trigger the job with the parameters and observe the output.
+
+This approach leverages the flexibility of Jenkins pipelines while still utilizing the functionality of dynamically selecting project names from a JSON file.
