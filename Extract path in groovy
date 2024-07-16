@@ -1,0 +1,26 @@
+@Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')
+import groovy.json.JsonSlurper
+
+// Function to extract paths from the JSON file
+def extractPathsFromJson(jsonFilePath) {
+    // Read and parse the JSON file
+    def jsonFile = new File(jsonFilePath)
+    def jsonContent = new JsonSlurper().parseText(jsonFile.text)
+    
+    // Collect paths into a list
+    def paths = []
+    jsonContent.each { project, details ->
+        if (details.path) {
+            paths << details.path
+        }
+    }
+    
+    return paths
+}
+
+// Example usage
+def jsonFilePath = 'path/to/your/jsonfile.json' // Change this to the path of your JSON file
+def paths = extractPathsFromJson(jsonFilePath)
+
+// Output paths in a format suitable for Jenkins
+return paths.join(',')
