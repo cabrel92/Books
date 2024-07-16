@@ -1,0 +1,112 @@
+To integrate this Groovy script with Jenkins and use the extracted paths as build parameters, you can follow these steps:
+
+1. Write a Groovy script that extracts the paths from the JSON file.
+2. Output the paths in a format suitable for Jenkins parameters (e.g., a list or comma-separated values).
+3. Use the Jenkins "Choice Parameter" plugin to define the build parameter.
+
+Here's a step-by-step guide:
+
+### Groovy Script
+
+Save this script as a separate Groovy script file or as part of a Jenkins pipeline script.
+
+```groovy
+@Grab(group='org.codehaus.groovy.modules.http-builder', module='http-builder', version='0.7.1')
+import groovy.json.JsonSlurper
+
+// Function to extract paths from the JSON file
+def extractPathsFromJson(jsonFilePath) {
+    // Read and parse the JSON file
+    def jsonFile = new File(jsonFilePath)
+    def jsonContent = new JsonSlurper().parseText(jsonFile.text)
+    
+    // Collect paths into a list
+    def paths = []
+    jsonContent.each { project, details ->
+        if (details.path) {
+            paths << details.path
+        }
+    }
+    
+    return paths
+}
+
+// Example usage
+def jsonFilePath = 'path/to/your/jsonfile.json' // Change this to the path of your JSON file
+def paths = extractPathsFromJson(jsonFilePath)
+
+// Output paths in a format suitable for Jenkins
+return paths.join(',')
+```
+
+### Jenkins Pipeline Script
+
+Integrate the Groovy script with a Jenkins pipeline. Ensure you have the "Pipeline: Groovy" plugin installed.
+
+```groovy
+pipeline {
+    agent any
+    parameters {
+        choice(name: 'WORKDIR', choices: [], description: 'Select the workdir')
+    }
+    stages {
+        stage('Extract Paths') {
+            steps {
+                script {
+                    // Path to the JSON file
+                    def jsonFilePath = 'path/to/your/jsonfile.json'
+                    
+                    // Extract paths using the Groovy script
+                    def paths = extractPathsFromJson(jsonFilePath)
+                    
+                    // Update the choice parameter with the extracted paths
+                    properties([
+                        parameters([
+                            choice(name: 'WORKDIR', choices: paths, description: 'Select the workdir')
+                        ])
+                    ])
+                }
+            }
+        }
+        stage('Use Selected Path') {
+            steps {
+                script {
+                    // Use the selected path as the workdir
+                    echo "Selected workdir: ${params.WORKDIR}"
+                }
+            }
+        }
+    }
+}
+
+// Function to extract paths from the JSON file
+def extractPathsFromJson(jsonFilePath) {
+    // Read and parse the JSON file
+    def jsonFile = new File(jsonFilePath)
+    def jsonContent = new groovy.json.JsonSlurper().parseText(jsonFile.text)
+    
+    // Collect paths into a list
+    def paths = []
+    jsonContent.each { project, details ->
+        if (details.path) {
+            paths << details.path
+        }
+    }
+    
+    return paths
+}
+```
+
+### Explanation:
+1. **Groovy Script**:
+    - Reads and parses the JSON file.
+    - Collects the paths into a list.
+    - Returns the paths as a comma-separated string.
+
+2. **Jenkins Pipeline Script**:
+    - Defines a `choice` parameter for the workdir.
+    - Executes a stage to extract paths from the JSON file using the Groovy script.
+    - Updates the `choice` parameter with the extracted paths.
+    - Uses the selected path in a subsequent stage.
+
+Ensure the JSON file path in both scripts is correct. The pipeline will dynamically populate the `WORKDIR` choice parameter with paths extracted from the JSON file, allowing the user to select a path for the build.
