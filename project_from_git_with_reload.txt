@@ -1,0 +1,412 @@
+To use SSH for Git in your Jenkins pipeline, you need to configure Jenkins to use SSH credentials. Here’s how you can set this up:
+
+### Step 1: Add SSH Credentials in Jenkins
+
+1. **Navigate to Jenkins Credentials**:
+   - Go to Jenkins Dashboard.
+   - Click on "Manage Jenkins".
+   - Click on "Manage Credentials".
+
+2. **Add SSH Credentials**:
+   - Select the appropriate domain (usually "Global").
+   - Click on "Add Credentials".
+   - Select "SSH Username with private key" from the dropdown.
+   - Fill in the required fields:
+     - **ID**: (Optional) An identifier for the credential.
+     - **Description**: A description of the credential.
+     - **Username**: The SSH username.
+     - **Private Key**: Choose "Enter directly" and paste your private key, or select "From a file on Jenkins master" if the key is stored on the Jenkins server.
+   - Click "OK" to save the credentials.
+
+### Step 2: Use SSH Credentials in the Jenkinsfile
+
+To use the SSH credentials in the Jenkins pipeline, you will reference the credential ID you created in Step 1.
+
+#### Jenkinsfile
+
+```groovy
+import groovy.json.JsonSlurper
+
+pipeline {
+    agent any
+
+    triggers {
+        // Schedule the job to run every 5 minutes
+        cron('H/5 * * * *')
+    }
+
+    environment {
+        REPO_URL = 'git@your-repo-url.git'  // Replace with your SSH repository URL
+        BRANCH = 'main'  // Replace with the branch you want to pull from
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the latest code from the repository using SSH credentials
+                git url: env.REPO_URL, branch: env.BRANCH, credentialsId: 'your-credential-id'
+            }
+        }
+
+        stage('Retrieve Project Names') {
+            steps {
+                script {
+                    // Retrieve project names using the getProjectNames function
+                    def projectNames = getProjectNames("${workspace}/projects.json")
+                    
+                    // Store project names in an environment variable for later use
+                    env.PROJECT_NAMES = projectNames.join(',')
+                }
+            }
+        }
+
+        stage('Prompt for Additional Parameters') {
+            steps {
+                script {
+                    // Get the chosen project name from the Jenkins parameter
+                    def chosenProjectName = input message: 'Select a project', parameters: [
+                        choice(name: 'PROJECT_NAME', choices: env.PROJECT_NAMES.split(','), description: 'Select a project')
+                    ]
+
+                    echo "Chosen Project: ${chosenProjectName}"
+
+                    // Check if the selected project requires an image version
+                    def requiresImageVersion = chosenProjectName in ['lab_website', 'all_nlp_server']
+
+                    if (requiresImageVersion) {
+                        // Prompt for additional input (image version)
+                        def imageVersion = input message: 'Enter Image Version', parameters: [
+                            string(name: 'IMAGE_VERSION', defaultValue: '', description: 'Enter the image version for the selected project')
+                        ]
+                        echo "Selected Image Version: ${imageVersion}"
+                    }
+
+                    // Proceed with further stages or steps as needed
+                }
+            }
+        }
+    }
+}
+
+// Function to get project names from the JSON file
+def getProjectNames(jsonFilePath) {
+    def jsonFile = new File(jsonFilePath)
+    
+    if (!jsonFile.exists()) {
+        error "Error: JSON file not found at ${jsonFilePath}"
+    }
+
+    def jsonContent = jsonFile.text
+    def jsonSlurper = new JsonSlurper()
+    def projects = jsonSlurper.parseText(jsonContent)
+    def projectNames = projects.keySet().toList()
+
+    return projectNames
+}
+```
+
+### Explanation
+
+1. **Credentials**:
+   - Add your SSH credentials to Jenkins via "Manage Credentials".
+   - Note the credential ID you used.
+
+2. **Environment Variables**:
+   - Set the `REPO_URL` to your SSH Git repository URL.
+   - Use the credential ID in the `git` step to checkout the repository.
+
+3. **Pipeline Stages**:
+   - The `Checkout` stage uses the `git` step with the `credentialsId` parameter to authenticate using SSH.
+   - The rest of the stages are similar to the previous script, where the JSON file is parsed, project names are extracted, and conditional input is handled.
+
+### Saving and Running the Pipeline
+
+1. **Save the Pipeline Script**:
+   - Save your Jenkinsfile in the job configuration if you are using the inline editor.
+   - If using SCM, ensure the Jenkinsfile is checked into your repository.
+
+2. **Build Periodically**:
+   - The job will now run every 5 minutes as per the cron schedule.
+
+3. **Manual Trigger**:
+   - You can also manually trigger the job if needed by clicking "Build Now".
+
+4. **Provide Conditional Input**:
+   - If the selected project is `lab_website` or `all_nlp_server`, Jenkins will prompt for the image version during the build process.
+
+5. **Check the Console Output**:
+   - After the build completes, go to the build's console output to see the chosen project name, its path, and the image version if it was prompted for.
+
+### Summary
+
+This setup ensures that the pipeline can authenticate using SSH credentials, fetch the latest `projects.json` from the repository, and prompt for additional parameters when specific projects are selected.
+
+
+
+You are right; keeping the `getProjectNames` function separate can make the code cleaner and more modular. Let’s reintroduce the `getProjectNames` function into the pipeline script, ensuring it is used to retrieve the project names dynamically.
+
+Here is the updated Jenkinsfile that includes the `getProjectNames` function, which will fetch and return the project names from the `projects.json` file:
+
+### Jenkinsfile
+
+```groovy
+import groovy.json.JsonSlurper
+
+pipeline {
+    agent any
+
+    triggers {
+        // Schedule the job to run every 5 minutes
+        cron('H/5 * * * *')
+    }
+
+    environment {
+        REPO_URL = 'https://your-repo-url.git'  // Replace with your repository URL
+        BRANCH = 'main'  // Replace with the branch you want to pull from
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the latest code from the repository
+                git url: env.REPO_URL, branch: env.BRANCH
+            }
+        }
+
+        stage('Retrieve Project Names') {
+            steps {
+                script {
+                    // Retrieve project names using the getProjectNames function
+                    def projectNames = getProjectNames("${workspace}/projects.json")
+                    
+                    // Store project names in an environment variable for later use
+                    env.PROJECT_NAMES = projectNames.join(',')
+                }
+            }
+        }
+
+        stage('Prompt for Additional Parameters') {
+            steps {
+                script {
+                    // Get the chosen project name from the Jenkins parameter
+                    def chosenProjectName = input message: 'Select a project', parameters: [
+                        choice(name: 'PROJECT_NAME', choices: env.PROJECT_NAMES.split(','), description: 'Select a project')
+                    ]
+
+                    echo "Chosen Project: ${chosenProjectName}"
+
+                    // Check if the selected project requires an image version
+                    def requiresImageVersion = chosenProjectName in ['lab_website', 'all_nlp_server']
+
+                    if (requiresImageVersion) {
+                        // Prompt for additional input (image version)
+                        def imageVersion = input message: 'Enter Image Version', parameters: [
+                            string(name: 'IMAGE_VERSION', defaultValue: '', description: 'Enter the image version for the selected project')
+                        ]
+                        echo "Selected Image Version: ${imageVersion}"
+                    }
+
+                    // Proceed with further stages or steps as needed
+                }
+            }
+        }
+    }
+}
+
+// Function to get project names from the JSON file
+def getProjectNames(jsonFilePath) {
+    def jsonFile = new File(jsonFilePath)
+    
+    if (!jsonFile.exists()) {
+        error "Error: JSON file not found at ${jsonFilePath}"
+    }
+
+    def jsonContent = jsonFile.text
+    def jsonSlurper = new JsonSlurper()
+    def projects = jsonSlurper.parseText(jsonContent)
+    def projectNames = projects.keySet().toList()
+
+    return projectNames
+}
+```
+
+### Explanation
+
+1. **Pipeline Definition**:
+   - The `pipeline` block defines the pipeline stages and configurations.
+   - The `agent any` directive indicates that the pipeline can run on any available agent.
+
+2. **Triggers Block**:
+   - The `triggers` block uses a cron expression (`H/5 * * * *`) to schedule the job to run every 5 minutes.
+
+3. **Environment Variables**:
+   - The `environment` block sets the repository URL and branch to pull the latest code.
+
+4. **Stages Block**:
+   - **Checkout Stage**: Uses the `git` step to pull the latest code from the repository.
+   - **Retrieve Project Names Stage**: Calls the `getProjectNames` function to read and parse the `projects.json` file from the workspace and stores the project names in an environment variable.
+   - **Prompt for Additional Parameters Stage**: Prompts the user to select a project and, if necessary, enter an image version.
+
+5. **getProjectNames Function**:
+   - This function reads the `projects.json` file, parses it, and returns a list of project names.
+
+### Saving and Running the Pipeline
+
+1. **Save the Pipeline Script**:
+   - Save your Jenkinsfile in the job configuration if you are using the inline editor.
+   - If using SCM, ensure the Jenkinsfile is checked into your repository.
+
+2. **Build Periodically**:
+   - The job will now run every 5 minutes as per the cron schedule.
+
+3. **Manual Trigger**:
+   - You can also manually trigger the job if needed by clicking "Build Now".
+
+4. **Provide Conditional Input**:
+   - If the selected project is `lab_website` or `all_nlp_server`, Jenkins will prompt for the image version during the build process.
+
+5. **Check the Console Output**:
+   - After the build completes, go to the build's console output to see the chosen project name, its path, and the image version if it was prompted for.
+
+### Summary
+
+- **Configure SCM**: Ensure the pipeline checks out the latest code from the repository.
+- **Schedule Job**: Use a cron trigger to run the job every 5 minutes.
+- **Dynamic Parameters**: Use the `input` step to prompt for additional parameters based on the selected project.
+
+This setup ensures that the `projects.json` file is always up-to-date with the latest repository changes and prompts for additional parameters when specific projects are selected.
+
+
+
+
+
+To adjust the Jenkins pipeline to refresh the `projects.json` file from the repository every 5 minutes, you can use the Jenkins job scheduling and SCM checkout features. This setup involves configuring a cron job in Jenkins to trigger the pipeline periodically and ensuring that the latest `projects.json` is pulled from the repository.
+
+Here's how you can achieve this:
+
+### Step 1: Configure Pipeline to Pull from SCM
+
+1. **Create the Jenkins Pipeline**:
+   - Go to Jenkins Dashboard.
+   - Click on "New Item".
+   - Enter a name for the job and select "Pipeline".
+   - Click "OK".
+
+2. **Configure SCM Checkout in Pipeline**:
+   - Scroll down to the "Pipeline" section.
+   - Select "Pipeline script" or "Pipeline script from SCM" depending on where you store your Jenkinsfile.
+
+### Step 2: Define the Jenkinsfile
+
+#### Jenkinsfile
+
+```groovy
+pipeline {
+    agent any
+
+    triggers {
+        // Schedule the job to run every 5 minutes
+        cron('H/5 * * * *')
+    }
+
+    environment {
+        REPO_URL = 'https://your-repo-url.git'  // Replace with your repository URL
+        BRANCH = 'main'  // Replace with the branch you want to pull from
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                // Checkout the latest code from the repository
+                git url: env.REPO_URL, branch: env.BRANCH
+            }
+        }
+
+        stage('Retrieve Project Names') {
+            steps {
+                script {
+                    // Load and parse the projects.json file from the workspace
+                    def jsonFilePath = "${workspace}/projects.json"  // Adjust this path if necessary
+                    def jsonFile = new File(jsonFilePath)
+
+                    if (!jsonFile.exists()) {
+                        error "Error: JSON file not found at ${jsonFilePath}"
+                    }
+
+                    def jsonContent = jsonFile.text
+                    def jsonSlurper = new JsonSlurper()
+                    def projects = jsonSlurper.parseText(jsonContent)
+                    def projectNames = projects.keySet().toList()
+
+                    // Store project names in a global variable or environment variable for later use
+                    currentBuild.description = "Available Projects: ${projectNames.join(', ')}"
+                    env.PROJECT_NAMES = projectNames.join(',')
+                }
+            }
+        }
+
+        stage('Prompt for Additional Parameters') {
+            steps {
+                script {
+                    // Get the chosen project name from the Jenkins parameter
+                    def chosenProjectName = input message: 'Select a project', parameters: [
+                        choice(name: 'PROJECT_NAME', choices: env.PROJECT_NAMES.split(','), description: 'Select a project')
+                    ]
+
+                    echo "Chosen Project: ${chosenProjectName}"
+
+                    // Check if the selected project requires an image version
+                    def requiresImageVersion = chosenProjectName in ['lab_website', 'all_nlp_server']
+
+                    if (requiresImageVersion) {
+                        // Prompt for additional input (image version)
+                        def imageVersion = input message: 'Enter Image Version', parameters: [
+                            string(name: 'IMAGE_VERSION', defaultValue: '', description: 'Enter the image version for the selected project')
+                        ]
+                        echo "Selected Image Version: ${imageVersion}"
+                    }
+
+                    // Proceed with further stages or steps as needed
+                }
+            }
+        }
+    }
+}
+```
+
+### Explanation
+
+1. **Pipeline Definition**:
+   - The `pipeline` block defines the pipeline.
+   - The `agent any` directive indicates that the pipeline can run on any available agent.
+
+2. **Triggers Block**:
+   - The `triggers` block uses a cron expression (`H/5 * * * *`) to schedule the job to run every 5 minutes.
+
+3. **Environment Variables**:
+   - The `environment` block sets the repository URL and branch to pull the latest code.
+
+4. **Stages Block**:
+   - **Checkout Stage**: Uses the `git` step to pull the latest code from the repository.
+   - **Retrieve Project Names Stage**: Reads and parses the `projects.json` file from the workspace, and stores the project names in an environment variable for later use.
+   - **Prompt for Additional Parameters Stage**: Prompts the user to select a project and, if necessary, enter an image version.
+
+### Step 3: Save and Run the Pipeline
+
+1. **Save the Pipeline Script**:
+   - Save your Jenkinsfile in the job configuration if you are using the inline editor.
+   - If using SCM, ensure the Jenkinsfile is checked into your repository.
+
+2. **Build Periodically**:
+   - The job will now run every 5 minutes as per the cron schedule.
+
+3. **Manual Trigger**:
+   - You can also manually trigger the job if needed by clicking "Build Now".
+
+### Summary
+
+- **Configure SCM**: Ensure the pipeline checks out the latest code from the repository.
+- **Schedule Job**: Use a cron trigger to run the job every 5 minutes.
+- **Dynamic Parameters**: Use the `input` step to prompt for additional parameters based on the selected project.
+
+This setup ensures that the `projects.json` file is always up-to-date with the latest repository changes and prompts for additional parameters when specific projects are selected.
