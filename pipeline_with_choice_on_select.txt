@@ -1,0 +1,129 @@
+To add a conditional input parameter that only appears when certain projects are selected, you can use the `input` step in combination with a conditional check within the Jenkins pipeline script. Jenkins doesn't natively support showing additional parameters conditionally based on the initial parameter selection in the job configuration UI. However, you can prompt for additional input during the build process.
+
+Here's how you can achieve this in a Jenkins pipeline:
+
+### Step 1: Define the Initial Parameter
+
+Define the initial choice parameter for project selection.
+
+### Step 2: Add Conditional Input Step
+
+Within the pipeline stages, add a conditional check to prompt for additional parameters if certain projects are selected.
+
+#### Jenkinsfile
+
+```groovy
+import groovy.json.JsonSlurper
+
+pipeline {
+    agent any
+
+    parameters {
+        // Define an Active Choices parameter for project names
+        choice(name: 'PROJECT_NAME', choices: getProjectNames(), description: 'Select a project')
+    }
+
+    stages {
+        stage('Retrieve Project Path') {
+            steps {
+                script {
+                    // Get the chosen project name
+                    def chosenProjectName = params.PROJECT_NAME
+
+                    // Read the JSON file and parse it
+                    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+                    def jsonFile = new File(jsonFilePath)
+
+                    if (!jsonFile.exists()) {
+                        error "Error: JSON file not found at ${jsonFilePath}"
+                    }
+
+                    def jsonContent = jsonFile.text
+                    def jsonSlurper = new JsonSlurper()
+                    def projects = jsonSlurper.parseText(jsonContent)
+
+                    // Get the path of the chosen project
+                    def projectPath = projects[chosenProjectName]?.path
+
+                    if (projectPath) {
+                        echo "Chosen Project: ${chosenProjectName}"
+                        echo "Project Path: ${projectPath}"
+                    } else {
+                        error "Error: Project path not found for ${chosenProjectName}"
+                    }
+
+                    // Check if the selected project requires an image version
+                    def requiresImageVersion = chosenProjectName in ['lab_website', 'all_nlp_server']
+
+                    if (requiresImageVersion) {
+                        // Prompt for additional input (image version)
+                        def imageVersion = input message: 'Enter Image Version', parameters: [
+                            string(name: 'IMAGE_VERSION', defaultValue: '', description: 'Enter the image version for the selected project')
+                        ]
+                        echo "Selected Image Version: ${imageVersion}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+def getProjectNames() {
+    def jsonFilePath = '/path/to/your/projects.json'  // Adjust this path as needed
+    def jsonFile = new File(jsonFilePath)
+
+    if (!jsonFile.exists()) {
+        return ["Error: JSON file not found"]
+    }
+
+    def jsonContent = jsonFile.text
+    def jsonSlurper = new JsonSlurper()
+    def projects = jsonSlurper.parseText(jsonContent)
+    def projectNames = projects.keySet().toList()
+
+    return projectNames
+}
+```
+
+### Explanation
+
+1. **Pipeline Definition**:
+   - The `pipeline` block defines the pipeline.
+   - The `agent any` directive indicates that the pipeline can run on any available agent.
+
+2. **Parameters Block**:
+   - The `parameters` block defines a choice parameter named `PROJECT_NAME` to select a project.
+
+3. **Stages Block**:
+   - The `Retrieve Project Path` stage includes the main logic.
+   - The chosen project name is obtained using `params.PROJECT_NAME`.
+   - The JSON file is read and parsed to retrieve the project path.
+   - A conditional check is performed to see if the chosen project requires an additional parameter (`IMAGE_VERSION`).
+   - If the chosen project is `lab_website` or `all_nlp_server`, the `input` step is used to prompt the user for the image version.
+
+4. **getProjectNames Method**:
+   - This method reads the JSON file, parses it, and returns a list of project names.
+
+### Saving and Running the Pipeline
+
+1. **Save the Pipeline Script**:
+   - Save your Jenkinsfile in the job configuration if you are using the inline editor.
+   - If using SCM, ensure the Jenkinsfile is checked into your repository.
+
+2. **Build with Parameters**:
+   - Click "Build with Parameters".
+   - Select the project name from the dropdown list and click "Build".
+
+3. **Provide Conditional Input**:
+   - If the selected project is `lab_website` or `all_nlp_server`, Jenkins will prompt for the image version during the build process.
+
+4. **Check the Console Output**:
+   - After the build completes, go to the build's console output to see the chosen project name, its path, and the image version if it was prompted for.
+
+### Summary
+
+- **Pipeline Job**: Create a new pipeline job in Jenkins.
+- **Define Jenkinsfile**: Use the provided script to define your Jenkinsfile with conditional input prompts.
+- **Build with Parameters**: Trigger the job with the parameters and observe the conditional input prompts during the build process.
+
+This approach ensures that additional parameters are requested based on the initial parameter selection, allowing for more dynamic and flexible pipeline configurations.
