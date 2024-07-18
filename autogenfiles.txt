@@ -1,0 +1,134 @@
+Certainly! We can customize the script to use a `Pipfile` for managing dependencies instead of a `requirements.txt` file, and we can add steps to create a user for installing the packages.
+
+### Updated JSON File (parameters.json):
+```json
+{
+  "project": {
+    "python_version": "3.9",
+    "virtualenv_path": "/path/to/venv",
+    "project_path": "/path/to/project",
+    "log_file": "/path/to/log.txt",
+    "pipfile_path": "/path/to/project/Pipfile",
+    "pipfile_lock_path": "/path/to/project/Pipfile.lock",
+    "user": "appuser"
+  },
+  "image": {
+    "image_version": "3.9",
+    "artifactory_root": "artifactory.org/project/project_path",
+    "dockerfile_path": "/path/to/dockerfile/dockerfile.app"
+  }
+}
+```
+
+### Updated Python Script to Generate entrypoint.sh and Dockerfile (generate_files.py):
+```python
+import json
+import sys
+import os
+
+if len(sys.argv) != 2:
+    print("Usage: python generate_files.py <parameters.json>")
+    sys.exit(1)
+
+param_file = sys.argv[1]
+
+# Read and parse the JSON file
+with open(param_file, 'r') as file:
+    params = json.load(file)
+
+# Extract parameters for entrypoint.sh
+project_params = params['project']
+python_version = project_params['python_version']
+virtualenv_path = project_params['virtualenv_path']
+project_path = project_params['project_path']
+log_file = project_params['log_file']
+pipfile_path = project_params['pipfile_path']
+pipfile_lock_path = project_params['pipfile_lock_path']
+user = project_params['user']
+
+# Extract parameters for Dockerfile
+image_params = params['image']
+image_version = image_params['image_version']
+artifactory_root = image_params['artifactory_root']
+dockerfile_path = image_params['dockerfile_path']
+
+# Create the entrypoint.sh script
+with open('entrypoint.sh', 'w') as f:
+    f.write(f"""#!/bin/bash
+
+# Run the Python script using the virtual environment's Python interpreter and redirect output to log file
+{virtualenv_path}/bin/python {project_path}/server.py >> {log_file} 2>&1
+""")
+
+# Make the entrypoint.sh script executable
+os.chmod('entrypoint.sh', 0o755)
+
+print("entrypoint.sh created and made executable.")
+
+# Create the Dockerfile
+with open(dockerfile_path, 'w') as f:
+    f.write(f"""# Use the specified Python image version
+FROM python:{image_version}
+
+# Create a new user and set permissions
+RUN useradd -m {user}
+
+# Set the working directory in the container
+WORKDIR {project_path}
+
+# Copy the project files into the container
+COPY . {project_path}
+
+# Copy Pipfile and Pipfile.lock
+COPY {pipfile_path} {pipfile_path}
+COPY {pipfile_lock_path} {pipfile_lock_path}
+
+# Install pipenv
+RUN pip install pipenv
+
+# Switch to the created user
+USER {user}
+
+# Install project dependencies using pipenv
+RUN pipenv install --deploy --system
+
+# Switch back to root user to set up entrypoint
+USER root
+
+# Copy and make the entrypoint.sh script executable
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Specify the entrypoint script
+ENTRYPOINT ["entrypoint.sh"]
+
+# Expose the port (if necessary)
+EXPOSE 8000  # Change this to the correct port if needed
+""")
+
+print("Dockerfile created at", dockerfile_path)
+```
+
+### Explanation:
+1. **JSON File**: Contains the parameters for both the project and the Docker image, including paths for `Pipfile` and `Pipfile.lock`, and a user to install packages.
+2. **Python Script**:
+   - The script reads and parses the JSON file using the `json` module.
+   - It extracts the necessary parameters for generating the `entrypoint.sh` script and the Dockerfile.
+   - It generates the `entrypoint.sh` script to run the Python script using the virtual environment's Python interpreter and redirects the output to `log.txt`.
+   - It generates the Dockerfile to:
+     - Set up the container environment.
+     - Create a new user.
+     - Copy the project files and `Pipfile`/`Pipfile.lock`.
+     - Install `pipenv` and use it to install project dependencies.
+     - Set up the entrypoint script and make it executable.
+   - The script makes the `entrypoint.sh` script executable.
+
+### Usage:
+1. Create the JSON file `parameters.json` with your parameters.
+2. Save the Python script as `generate_files.py`.
+3. Run the Python script with the JSON file as a parameter:
+   ```bash
+   python generate_files.py parameters.json
+   ```
+
+This will generate an `entrypoint.sh` script and a Dockerfile based on the parameters provided in the JSON file, making the `entrypoint.sh` script executable and setting up the Dockerfile for building your Docker image, using `pipenv` to manage dependencies and running the project with the specified user.
