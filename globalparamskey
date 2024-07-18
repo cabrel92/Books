@@ -1,0 +1,167 @@
+Let's refine the approach to ensure it works correctly. The key issue might be the dynamic assignment of global variables and the use of these variables within the script. Instead of using `globals()`, we can store the parameters in a dictionary and then access them appropriately.
+
+Here is the revised approach:
+
+1. **Extract keys dynamically and store them in a dictionary**.
+2. **Use these values from the dictionary to create the necessary files**.
+
+```python
+import json
+import sys
+import os
+
+def extract_keys(data, prefix=''):
+    """
+    Extract keys from nested dictionary and set them in a flat dictionary with hierarchical keys.
+    """
+    result = {}
+    for key, value in data.items():
+        global_name = f"{prefix}{key}"
+        if isinstance(value, dict):
+            result.update(extract_keys(value, prefix=f"{global_name}_"))
+        else:
+            result[global_name] = value
+    return result
+
+if len(sys.argv) != 3:
+    print("Usage: python generate_files.py <parameters.json> <env_builder>")
+    sys.exit(1)
+
+param_file = sys.argv[1]
+env_builder = sys.argv[2]
+
+# Read and parse the JSON file
+with open(param_file, 'r') as file:
+    params = json.load(file)
+
+# Extract parameters dynamically
+flat_params = extract_keys(params)
+
+# Validate the env_builder
+if env_builder not in flat_params['image_image_env_builder']:
+    print(f"Error: '{env_builder}' is not a valid environment builder. Choose from {flat_params['image_image_env_builder']}.")
+    sys.exit(1)
+
+# Create the entrypoint.sh script
+entrypoint_content = f"""#!/bin/bash
+
+# Check if the log file exists, create if not
+if [ ! -f {flat_params['project_log_file']} ]; then
+    touch {flat_params['project_log_file']}
+fi
+
+# Run the Python script using the virtual environment's Python interpreter and redirect output to log file
+{flat_params['project_virtualenv_path']}/bin/python {flat_params['project_project_path']}/server.py >> {flat_params['project_log_file']} 2>&1
+"""
+
+entrypoint_path = os.path.join(flat_params['project_project_path'], 'entrypoint.sh')
+with open(entrypoint_path, 'w') as f:
+    f.write(entrypoint_content)
+
+# Make the entrypoint.sh script executable
+os.chmod(entrypoint_path, 0o755)
+
+print("entrypoint.sh created and made executable.")
+
+# Create the Dockerfile for the selected environment builder image
+dockerfile_content = f"""# Use the specified Python image version
+FROM {flat_params['image_artifactory_root']}/{env_builder}:{flat_params['image_image_version']}
+
+# Create a new user and set permissions
+RUN useradd -m {flat_params['project_user']}
+
+# Set the working directory in the container
+WORKDIR {flat_params['project_project_path']}
+
+# Copy the project files into the container
+COPY . {flat_params['project_project_path']}
+
+# Copy Pipfile and Pipfile.lock
+COPY {flat_params['project_pipfile_path']} {flat_params['project_pipfile_lock_path']}
+
+# Install pipenv
+RUN pip install pipenv
+
+# Switch to the created user
+USER {flat_params['project_user']}
+
+# Install project dependencies using pipenv
+RUN pipenv install --deploy --system
+
+# Switch back to root user to set up entrypoint
+USER root
+
+# Copy and make the entrypoint.sh script executable
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Specify the entrypoint script
+ENTRYPOINT ["entrypoint.sh"]
+
+# Expose the port (if necessary)
+EXPOSE 8000  # Change this to the correct port if needed
+
+# Healthcheck
+HEALTHCHECK --interval={flat_params['image_image_check_healthcheck_interval']}s CMD curl --fail http://localhost:{flat_params['image_image_check_health_port']}/{flat_params['image_image_check_health_endpoint']} || exit 1
+"""
+
+dockerfile_path = os.path.join(flat_params['image_dockerfile_path'], f'Dockerfile.{env_builder}')
+with open(dockerfile_path, 'w') as f:
+    f.write(dockerfile_content)
+
+print(f"Dockerfile created at {dockerfile_path}")
+
+# Create the build.sh script
+build_script_content = f"""#!/bin/bash
+
+# Export environment variables
+export DOCKER_BUILDKIT=1
+
+# Parse command-line arguments
+PUSH=false
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --push) PUSH=true ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Build the Docker image
+IMAGE_NAME={flat_params['image_artifactory_root']}/{env_builder}:{flat_params['image_image_version']}
+docker build -t $IMAGE_NAME -f {dockerfile_path} .
+
+# Example of docker run command with multiline continuation
+docker run \\
+  --mount=type=bind,target=. \\
+  --mount=type=secret,id=SECRET_TOKEN \\
+  SECRET_TOKEN=$(cat /run/secrets/SECRET_TOKEN) yarn run test
+
+# Push the Docker image if --push is specified
+if [ "$PUSH" = true ]; then
+    docker push $IMAGE_NAME
+fi
+"""
+
+build_script_path = os.path.join(flat_params['project_project_path'], 'build.sh')
+with open(build_script_path, 'w') as f:
+    f.write(build_script_content)
+
+# Make the build.sh script executable
+os.chmod(build_script_path, 0o755)
+
+print("build.sh created and made executable.")
+```
+
+### Explanation:
+
+1. **Dynamic Key Extraction Function**:
+   - The `extract_keys` function extracts keys from the nested dictionary and stores them in a flat dictionary with hierarchical keys.
+   - This function recursively traverses the dictionary and builds keys with a prefix to maintain the hierarchy.
+
+2. **Main Script**:
+   - The script reads the JSON file and calls `extract_keys(params)` to dynamically create a flat dictionary of parameters.
+   - These parameters are then accessed from the `flat_params` dictionary to create `entrypoint.sh`, `Dockerfile`, and `build.sh` scripts.
+
+This approach ensures that the script can handle changes in the JSON structure dynamically without requiring manual updates to the variable extraction code.
