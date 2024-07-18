@@ -132,3 +132,192 @@ print("Dockerfile created at", dockerfile_path)
    ```
 
 This will generate an `entrypoint.sh` script and a Dockerfile based on the parameters provided in the JSON file, making the `entrypoint.sh` script executable and setting up the Dockerfile for building your Docker image, using `pipenv` to manage dependencies and running the project with the specified user.
+
+
+
+
+
+
+
+
+Sure, let's modify the script to generate a `build.sh` file. This file will contain:
+1. An export section to set environment variables.
+2. A script section to handle input parameters like `--push`.
+3. A section to run the `docker build` command.
+4. A conditional section to push the Docker image to a repository if `--push` is specified.
+
+Here's the updated script:
+
+### Updated Python Script (generate_files.py)
+```python
+import json
+import sys
+import os
+
+if len(sys.argv) != 3:
+    print("Usage: python generate_files.py <parameters.json> <env_builder>")
+    sys.exit(1)
+
+param_file = sys.argv[1]
+env_builder = sys.argv[2]
+
+# Read and parse the JSON file
+with open(param_file, 'r') as file:
+    params = json.load(file)
+
+# Extract parameters for entrypoint.sh
+project_params = params['project']
+python_version = project_params['python_version']
+virtualenv_path = project_params['virtualenv_path']
+project_path = project_params['project_path']
+log_file = project_params['log_file']
+pipfile_path = project_params['pipfile_path']
+pipfile_lock_path = project_params['pipfile_lock_path']
+user = project_params['user']
+
+# Extract parameters for Dockerfile
+image_params = params['image']
+image_version = image_params['image_version']
+image_env_builder = image_params['image_env_builder']
+artifactory_root = image_params['artifactory_root']
+dockerfile_base_path = image_params['dockerfile_path']
+
+# Extract healthcheck parameters
+health_status = image_params['image_check']['health_status']
+health_port = image_params['image_check']['health_port']
+health_endpoint = image_params['image_check']['health_endpoint']
+healthcheck_interval = image_params['image_check']['healthcheck_interval']
+
+# Validate the env_builder
+if env_builder not in image_env_builder:
+    print(f"Error: '{env_builder}' is not a valid environment builder. Choose from {image_env_builder}.")
+    sys.exit(1)
+
+# Create the entrypoint.sh script
+entrypoint_content = f"""#!/bin/bash
+
+# Check if the log file exists, create if not
+if [ ! -f {log_file} ]; then
+    touch {log_file}
+fi
+
+# Run the Python script using the virtual environment's Python interpreter and redirect output to log file
+{virtualenv_path}/bin/python {project_path}/server.py >> {log_file} 2>&1
+"""
+
+entrypoint_path = os.path.join(project_path, 'entrypoint.sh')
+with open(entrypoint_path, 'w') as f:
+    f.write(entrypoint_content)
+
+# Make the entrypoint.sh script executable
+os.chmod(entrypoint_path, 0o755)
+
+print("entrypoint.sh created and made executable.")
+
+# Create the Dockerfile for the selected environment builder image
+dockerfile_content = f"""# Use the specified Python image version
+FROM {artifactory_root}/{env_builder}:{image_version}
+
+# Create a new user and set permissions
+RUN useradd -m {user}
+
+# Set the working directory in the container
+WORKDIR {project_path}
+
+# Copy the project files into the container
+COPY . {project_path}
+
+# Copy Pipfile and Pipfile.lock
+COPY {pipfile_path} {pipfile_lock_path}
+
+# Install pipenv
+RUN pip install pipenv
+
+# Switch to the created user
+USER {user}
+
+# Install project dependencies using pipenv
+RUN pipenv install --deploy --system
+
+# Switch back to root user to set up entrypoint
+USER root
+
+# Copy and make the entrypoint.sh script executable
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Specify the entrypoint script
+ENTRYPOINT ["entrypoint.sh"]
+
+# Expose the port (if necessary)
+EXPOSE 8000  # Change this to the correct port if needed
+
+# Healthcheck
+HEALTHCHECK --interval={healthcheck_interval}s CMD curl --fail http://localhost:{health_port}/{health_endpoint} || exit 1
+"""
+
+dockerfile_path = os.path.join(dockerfile_base_path, f'Dockerfile.{env_builder}')
+with open(dockerfile_path, 'w') as f:
+    f.write(dockerfile_content)
+
+print(f"Dockerfile created at {dockerfile_path}")
+
+# Create the build.sh script
+build_script_content = f"""#!/bin/bash
+
+# Export environment variables
+export DOCKER_BUILDKIT=1
+
+# Parse command-line arguments
+PUSH=false
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        --push) PUSH=true ;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
+# Build the Docker image
+IMAGE_NAME={artifactory_root}/{env_builder}:{image_version}
+docker build -t $IMAGE_NAME -f {dockerfile_path} .
+
+# Push the Docker image if --push is specified
+if [ "$PUSH" = true ]; then
+    docker push $IMAGE_NAME
+fi
+"""
+
+build_script_path = os.path.join(project_path, 'build.sh')
+with open(build_script_path, 'w') as f:
+    f.write(build_script_content)
+
+# Make the build.sh script executable
+os.chmod(build_script_path, 0o755)
+
+print("build.sh created and made executable.")
+```
+
+### Explanation:
+1. **Parameters**:
+   - The script now reads the additional `healthcheck` parameters from the JSON file.
+   
+2. **Entrypoint Script**:
+   - Ensures the log file is created if it doesn't exist before running the `server.py` script.
+   
+3. **Dockerfile**:
+   - Includes the `HEALTHCHECK` instruction using the extracted parameters.
+   
+4. **Build Script**:
+   - The `build.sh` script sets environment variables, parses command-line arguments to check for `--push`, runs the `docker build` command, and conditionally pushes the image if `--push` is specified.
+
+### Usage:
+1. Create the JSON file `parameters.json` with your parameters.
+2. Save the Python script as `generate_files.py`.
+3. Run the Python script with the JSON file and the desired environment builder as parameters:
+   ```bash
+   python generate_files.py parameters.json gmls
+   ```
+
+This will generate an `entrypoint.sh` script, a Dockerfile for the specified environment builder (e.g., `gmls`), and a `build.sh` script to build and optionally push the Docker image. The `entrypoint.sh` script ensures the log file is created if it doesn't exist before running the `server.py` script. The `build.sh` script handles building the Docker image and optionally pushing it to a repository.
