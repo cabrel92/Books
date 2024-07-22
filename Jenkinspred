@@ -1,0 +1,276 @@
+Sure, here is a complete wiki for installing Jenkins, configuring it to use Docker, creating a pipeline to build a Docker image, push it to Artifactory, and deploy it using Docker Swarm.
+
+## Jenkins Installation and Pipeline Execution on a VM
+
+### Table of Contents
+
+1. [Introduction](#introduction)
+2. [Prerequisites](#prerequisites)
+3. [Install Jenkins](#install-jenkins)
+   - [Step 1: Update System](#step-1-update-system)
+   - [Step 2: Install Java](#step-2-install-java)
+   - [Step 3: Add Jenkins Repository](#step-3-add-jenkins-repository)
+   - [Step 4: Install Jenkins](#step-4-install-jenkins)
+   - [Step 5: Start and Enable Jenkins Service](#step-5-start-and-enable-jenkins-service)
+   - [Step 6: Adjust Firewall](#step-6-adjust-firewall)
+   - [Step 7: Complete Jenkins Setup](#step-7-complete-jenkins-setup)
+4. [Install Docker on Jenkins Server](#install-docker-on-jenkins-server)
+5. [Configure Jenkins for Docker](#configure-jenkins-for-docker)
+6. [Configure Artifactory Credentials in Jenkins](#configure-artifactory-credentials-in-jenkins)
+7. [Execute a Jenkins Pipeline](#execute-a-jenkins-pipeline)
+   - [Step 1: Access Jenkins](#step-1-access-jenkins)
+   - [Step 2: Create a Pipeline Job](#step-2-create-a-pipeline-job)
+   - [Step 3: Define the Pipeline](#step-3-define-the-pipeline)
+   - [Step 4: Execute the Pipeline](#step-4-execute-the-pipeline)
+8. [Example Jenkins Pipeline Script](#example-jenkins-pipeline-script)
+9. [Example `docker-stack.yml` File](#example-docker-stack-yml-file)
+
+---
+
+### Introduction
+
+Jenkins is an open-source automation server that helps automate the parts of software development related to building, testing, and deploying, facilitating continuous integration and continuous delivery (CI/CD). This guide provides detailed instructions on installing Jenkins on a virtual machine, configuring it to use Docker, setting up Artifactory credentials, and executing a pipeline that builds a Docker image, pushes it to Artifactory, and deploys it using Docker Swarm.
+
+### Prerequisites
+
+- A virtual machine with a supported operating system (e.g., Ubuntu 20.04).
+- Administrative (root) access to the VM.
+- An internet connection.
+- Artifactory repository set up.
+- Docker and Docker Swarm configured on the server.
+- Docker installed on Jenkins server.
+
+### Install Jenkins
+
+#### Step 1: Update System
+
+Ensure your system packages are up-to-date:
+
+```sh
+sudo apt update
+sudo apt upgrade -y
+```
+
+#### Step 2: Install Java
+
+Jenkins requires Java to run. Install OpenJDK:
+
+```sh
+sudo apt install openjdk-11-jdk -y
+```
+
+Verify the installation:
+
+```sh
+java -version
+```
+
+#### Step 3: Add Jenkins Repository
+
+Add the Jenkins Debian repository to your system:
+
+```sh
+wget -q -O - https://pkg.jenkins.io/debian/jenkins.io.key | sudo apt-key add -
+sudo sh -c 'echo deb http://pkg.jenkins.io/debian-stable binary/ > /etc/apt/sources.list.d/jenkins.list'
+```
+
+#### Step 4: Install Jenkins
+
+Update your package list and install Jenkins:
+
+```sh
+sudo apt update
+sudo apt install jenkins -y
+```
+
+#### Step 5: Start and Enable Jenkins Service
+
+Start Jenkins and ensure it starts on boot:
+
+```sh
+sudo systemctl start jenkins
+sudo systemctl enable jenkins
+```
+
+#### Step 6: Adjust Firewall
+
+If you have a firewall enabled, allow traffic on port 8080:
+
+```sh
+sudo ufw allow 8080
+sudo ufw reload
+```
+
+#### Step 7: Complete Jenkins Setup
+
+Open a web browser and navigate to `http://your_vm_ip_or_domain:8080`. Follow the on-screen instructions to complete the setup:
+
+1. Retrieve the initial admin password:
+
+   ```sh
+   sudo cat /var/lib/jenkins/secrets/initialAdminPassword
+   ```
+
+2. Enter the password on the Jenkins setup page.
+3. Install suggested plugins.
+4. Create an admin user.
+
+### Install Docker on Jenkins Server
+
+1. **Install Docker**:
+
+   ```sh
+   sudo apt-get update
+   sudo apt-get install -y docker.io
+   ```
+
+2. **Start Docker and Enable at Boot**:
+
+   ```sh
+   sudo systemctl start docker
+   sudo systemctl enable docker
+   ```
+
+3. **Add Jenkins User to Docker Group**:
+
+   ```sh
+   sudo usermod -aG docker jenkins
+   ```
+
+### Configure Jenkins for Docker
+
+1. **Restart Jenkins to Apply Group Changes**:
+
+   ```sh
+   sudo systemctl restart jenkins
+   ```
+
+2. **Verify Docker Access**:
+   - Ensure Jenkins can access Docker by running a job with a shell script to list Docker information:
+
+   ```sh
+   docker info
+   ```
+
+### Configure Artifactory Credentials in Jenkins
+
+1. **Navigate to Jenkins Dashboard**.
+2. **Manage Jenkins** > **Manage Credentials** > **(global)** > **Add Credentials**.
+3. Add your Artifactory credentials (username and password/API key).
+
+### Execute a Jenkins Pipeline
+
+#### Step 1: Access Jenkins
+
+Navigate to `http://your_vm_ip_or_domain:8080` and log in with your admin credentials.
+
+#### Step 2: Create a Pipeline Job
+
+1. Click on `New Item` in the Jenkins dashboard.
+2. Enter a name for your job, select `Pipeline`, and click `OK`.
+
+#### Step 3: Define the Pipeline
+
+1. In the job configuration page, scroll down to the `Pipeline` section.
+2. Choose `Pipeline script` and enter your pipeline code (refer to the example script below).
+3. Click `Save` to save the pipeline configuration.
+
+#### Step 4: Execute the Pipeline
+
+1. In the job's page, click `Build Now` to execute the pipeline.
+2. Monitor the pipeline execution by clicking on the build number in the `Build History` on the left-hand side.
+
+### Example Jenkins Pipeline Script
+
+```groovy
+pipeline {
+    agent any
+
+    environment {
+        DOCKER_REGISTRY = 'your-artifactory-domain/artifactory-repo'
+        DOCKER_IMAGE = "${DOCKER_REGISTRY}/your-image-name"
+        DOCKER_CREDENTIALS_ID = 'your-credentials-id' // ID of the credentials you added in Jenkins
+        DOCKER_SWARM_MANAGER = 'your-swarm-manager-ip' // IP or hostname of your Docker Swarm manager
+        SWARM_STACK_NAME = 'your-swarm-stack-name'
+    }
+
+    stages {
+        stage('Build') {
+            steps {
+                script {
+                    // Building the Docker image
+                    docker.build("${DOCKER_IMAGE}:latest")
+                }
+            }
+        }
+        
+        stage('Push to Artifactory') {
+            steps {
+                script {
+                    docker.withRegistry("https://${DOCKER_REGISTRY}", "${DOCKER_CREDENTIALS_ID}") {
+                        docker.image("${DOCKER_IMAGE}:latest").push()
+                    }
+                }
+            }
+        }
+        
+        stage('Deploy to Docker Swarm') {
+            steps {
+                script {
+                    // Deploy the image to Docker Swarm
+                    sh """
+                    docker -H ${DOCKER_SWARM_MANAGER}:2376 stack deploy --compose-file docker-stack.yml ${SWARM_STACK_NAME}
+                    """
+                }
+            }
+        }
+    }
+    
+    post {
+        always {
+            cleanWs()
+        }
+    }
+}
+```
+
+### Example `docker-stack.yml` File
+
+Create a `docker-stack.yml` file in your project repository, which defines the services and configurations for your Docker Swarm stack, including the bind mounts for logs and models.
+
+```yaml
+version: '3.8'
+
+services:
+  web:
+    image: your-artifactory-domain/artifactory-repo/your-image-name:latest
+    ports:
+      - "80:80"
+    deploy:
+      replicas: 3
+      update_config:
+        parallelism: 2
+        delay: 10s
+      restart_policy:
+        condition: on-failure
+    volumes:
+      - /path/on/host/logs:/path/in/container/logs
+      - /path/on/host/models:/path/in/container/models
+
+volumes:
+  logs:
+  models:
+```
+
+### Building and Running the Pipeline
+
+1. **Create a Jenkins Pipeline Job**:
+   - Follow the steps to create a new pipeline job in Jenkins and paste the extended pipeline script into the pipeline definition.
+
+2. **Execute the Pipeline**:
+   - Click on `Build Now` to run the pipeline.
+   - Monitor the pipeline execution through the Jenkins dashboard.
+
+### Conclusion
+
+This guide covers the installation of Jenkins on a virtual machine, setting it up to use Docker, configuring Artifactory credentials, and executing a Jenkins pipeline that builds a Docker image, pushes it to Artifactory, and deploys it on a Docker Swarm cluster. Make sure to adapt the environment variables and configuration settings to match your actual setup.
