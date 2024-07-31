@@ -1,0 +1,18 @@
+# Use the official Python image from the Docker Hub
+FROM python:3.9-slim
+
+# Copy the environment file into the container
+COPY env_vars.env /usr/src/app/env_vars.env
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Source the environment file to set environment variables
+RUN export $(cat /usr/src/app/env_vars.env | xargs) && \
+    # Example command to verify environment variables are set
+    echo "data1=${data1}" && \
+    echo "town=${town}" && \
+    echo "city=${city}"
+
+# Optional: Define your main application command here
+# CMD ["python", "your_app.py"]
