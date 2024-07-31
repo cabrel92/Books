@@ -1,0 +1,24 @@
+# Sample JSON data
+json_data = {
+    "s1": {
+        "user": {
+            "data1": "region",
+            "town": "dre",
+            "city": "cmt"
+        }
+    }
+}
+
+def extract_keys_and_values(data, prefix=''):
+    if isinstance(data, dict):
+        for key, value in data.items():
+            full_key = f"{prefix}{key}" if prefix else key
+            if isinstance(value, dict):
+                extract_keys_and_values(value, f"{full_key}.")
+            else:
+                print(f"{full_key}: {value}")
+    else:
+        print(f"{prefix}: {data}")
+
+# Extract keys and values
+extract_keys_and_values(json_data)
