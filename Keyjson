@@ -1,0 +1,36 @@
+import json
+
+# Sample JSON data
+json_data = {
+    "s1": {
+        "user": {
+            "data1": "region",
+            "town": "dre",
+            "city": "cmt"
+        }
+    }
+}
+
+def extract_last_keys(data):
+    last_keys = []
+
+    def _extract_last(x):
+        if isinstance(x, dict):
+            for k, v in x.items():
+                if isinstance(v, dict):
+                    _extract_last(v)
+                else:
+                    last_keys.append((k, v))
+        elif isinstance(x, list):
+            for item in x:
+                _extract_last(item)
+                
+    _extract_last(data)
+    return last_keys
+
+# Extract last keys and values
+last_keys_values = extract_last_keys(json_data)
+
+# Print the last key-value pairs
+for key, value in last_keys_values:
+    print(f"{key}: {value}")
