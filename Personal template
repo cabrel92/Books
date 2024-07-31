@@ -1,0 +1,112 @@
+Yes, you can put the context data in a file (such as a JSON file) and then read this file in your Python script to provide the context for generating the `Dockerfile` using the Jinja2 template.
+
+### Step-by-Step Guide
+
+1. **Create the Context File (JSON)**:
+    - Create a JSON file named `context.json` that contains the context data.
+
+```json
+{
+    "base_image": "python:3.9-slim",
+    "copy_files": [
+        {"src": "env_vars.txt", "dest": "/usr/src/app/env_vars.txt"},
+        {"src": "export_env_vars.sh", "dest": "/usr/src/app/export_env_vars.sh"}
+    ],
+    "run_commands": [
+        "chmod +x /usr/src/app/export_env_vars.sh",
+        "./export_env_vars.sh"
+    ]
+}
+```
+
+2. **Modify the Python Script to Read Context from JSON File**:
+
+```python
+import os
+import json
+from jinja2 import Environment, FileSystemLoader
+
+class DockerfileGenerator:
+    def __init__(self, template_dir=None):
+        if template_dir is None:
+            template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        self.template_dir = template_dir
+        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+
+    def generate_dockerfile(self, template_name, context, output_path='Dockerfile'):
+        template = self.env.get_template(template_name)
+        dockerfile_content = template.render(context)
+        with open(output_path, 'w') as dockerfile:
+            dockerfile.write(dockerfile_content)
+        print(f"Dockerfile generated at {output_path}")
+
+    def generate_build_sh(self, output_path='build.sh'):
+        build_script = """#!/bin/bash
+
+# Build the Docker image
+docker build -t my_docker_image .
+
+# Run the Docker container
+docker run --rm my_docker_image
+"""
+        with open(output_path, 'w') as build_file:
+            build_file.write(build_script)
+        os.chmod(output_path, 0o755)  # Make the build script executable
+        print(f"build.sh generated at {output_path}")
+
+    def load_context_from_file(self, context_file):
+        with open(context_file, 'r') as file:
+            context = json.load(file)
+        return context
+
+# Example usage
+if __name__ == '__main__':
+    generator = DockerfileGenerator()
+
+    # Load context from JSON file
+    context = generator.load_context_from_file('context.json')
+
+    # Generate Dockerfile
+    generator.generate_dockerfile('Dockerfile.j2', context)
+
+    # Generate build.sh
+    generator.generate_build_sh()
+```
+
+### Explanation
+
+1. **Context JSON File (`context.json`)**:
+    - Stores the context data in a JSON format. This allows for easy modification and scalability of the context data.
+
+2. **DockerfileGenerator Class**:
+    - **load_context_from_file**: A new method to read the context data from a JSON file and parse it into a Python dictionary.
+    - **generate_dockerfile**: Generates the `Dockerfile` using the context data loaded from the JSON file.
+    - **generate_build_sh**: Creates the `build.sh` script.
+
+### Directory Structure
+
+Ensure your directory structure looks like this:
+
+```
+your_project/
+│
+├── templates/
+│   └── Dockerfile.j2
+├── context.json
+├── env_vars.txt
+├── export_env_vars.sh
+└── your_script_name.py
+```
+
+### Running the Script
+
+1. **Ensure the `context.json` file and `Dockerfile.j2` template exist** as shown in the directory structure.
+2. **Run the script**:
+
+```sh
+python your_script_name.py
+```
+
+Replace `your_script_name.py` with the actual name of your Python script file.
+
+This setup allows you to manage the context data in a separate JSON file, making the script cleaner and the context data easier to manage.
