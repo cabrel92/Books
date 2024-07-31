@@ -1,0 +1,157 @@
+Pour ajouter des listes d'arguments et d'environnement dans le contexte et les utiliser dans un modèle Jinja2, vous pouvez suivre les étapes suivantes :
+
+### Étape 1 : Mettre à jour le fichier de contexte JSON
+
+Mettez à jour votre fichier `context.json` pour inclure des listes d'arguments et de variables d'environnement.
+
+```json
+{
+    "base_image": "python:3.9-slim",
+    "copy_files": [
+        {"src": "env_vars.txt", "dest": "/usr/src/app/env_vars.txt"},
+        {"src": "export_env_vars.sh", "dest": "/usr/src/app/export_env_vars.sh"}
+    ],
+    "run_commands": [
+        "chmod +x /usr/src/app/export_env_vars.sh",
+        "./export_env_vars.sh"
+    ],
+    "env_vars": [
+        {"name": "ENV_VAR1", "value": "value1"},
+        {"name": "ENV_VAR2", "value": "value2"}
+    ],
+    "arguments": [
+        "--arg1=value1",
+        "--arg2=value2"
+    ]
+}
+```
+
+### Étape 2 : Mettre à jour le modèle Jinja2
+
+Mettez à jour votre modèle `Dockerfile.j2` pour inclure les variables d'environnement et les arguments.
+
+```jinja2
+# Utiliser l'image de base officielle
+FROM {{ base_image }}
+
+# Copier les fichiers dans le conteneur
+{% for file in copy_files %}
+COPY {{ file.src }} {{ file.dest }}
+{% endfor %}
+
+# Définir le répertoire de travail
+WORKDIR /usr/src/app
+
+# Définir les variables d'environnement
+{% for var in env_vars %}
+ENV {{ var.name }}={{ var.value }}
+{% endfor %}
+
+# Exécuter les commandes
+{% for command in run_commands %}
+RUN {{ command }}
+{% endfor %}
+
+# Ajouter des arguments (si nécessaire)
+{% for argument in arguments %}
+ARG {{ argument }}
+{% endfor %}
+
+# Commande principale (optionnelle)
+# CMD ["python", "your_app.py"]
+```
+
+### Étape 3 : Mettre à jour le script Python
+
+Assurez-vous que votre script Python lit le fichier de contexte JSON et génère le `Dockerfile` et le `build.sh` en conséquence.
+
+```python
+import os
+import json
+from jinja2 import Environment, FileSystemLoader
+
+class DockerfileGenerator:
+    def __init__(self, template_dir=None):
+        if template_dir is None:
+            template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        self.template_dir = template_dir
+        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+
+    def generate_dockerfile(self, template_name, context, output_path='Dockerfile'):
+        template = self.env.get_template(template_name)
+        dockerfile_content = template.render(context)
+        with open(output_path, 'w') as dockerfile:
+            dockerfile.write(dockerfile_content)
+        print(f"Dockerfile generated at {output_path}")
+
+    def generate_build_sh(self, output_path='build.sh'):
+        build_script = """#!/bin/bash
+
+# Build the Docker image
+docker build -t my_docker_image .
+
+# Run the Docker container
+docker run --rm my_docker_image
+"""
+        with open(output_path, 'w') as build_file:
+            build_file.write(build_script)
+        os.chmod(output_path, 0o755)  # Rendre le script de construction exécutable
+        print(f"build.sh generated at {output_path}")
+
+    def load_context_from_file(self, context_file):
+        with open(context_file, 'r') as file:
+            context = json.load(file)
+        return context
+
+# Utilisation de l'exemple
+if __name__ == '__main__':
+    generator = DockerfileGenerator()
+
+    # Charger le contexte depuis le fichier JSON
+    context = generator.load_context_from_file('context.json')
+
+    # Générer le Dockerfile
+    generator.generate_dockerfile('Dockerfile.j2', context)
+
+    # Générer build.sh
+    generator.generate_build_sh()
+```
+
+### Explications
+
+1. **Fichier de contexte JSON (`context.json`)** :
+   - Ajoutez des listes pour les variables d'environnement (`env_vars`) et les arguments (`arguments`).
+
+2. **Modèle Jinja2 (`Dockerfile.j2`)** :
+   - Utilisez des boucles pour parcourir les listes de variables d'environnement et d'arguments et les ajouter au `Dockerfile`.
+
+3. **Script Python (`your_script_name.py`)** :
+   - Mettez à jour le script pour lire les nouvelles listes du fichier de contexte et les utiliser dans le modèle Jinja2.
+
+### Structure du répertoire
+
+Assurez-vous que votre structure de répertoire ressemble à ceci :
+
+```
+your_project/
+│
+├── templates/
+│   └── Dockerfile.j2
+├── context.json
+├── env_vars.txt
+├── export_env_vars.sh
+└── your_script_name.py
+```
+
+### Exécution du script
+
+1. **Assurez-vous que le fichier `context.json` et le modèle `Dockerfile.j2` existent** comme indiqué dans la structure du répertoire.
+2. **Exécutez le script** :
+
+```sh
+python your_script_name.py
+```
+
+Remplacez `your_script_name.py` par le nom réel de votre fichier de script Python.
+
+Cela générera un `Dockerfile` en utilisant les variables d'environnement et les arguments fournis dans le fichier de contexte JSON.
