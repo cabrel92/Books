@@ -1,0 +1,99 @@
+Certainly! Let’s simplify the steps and make sure the environment variables are set in a way that’s easier to follow. Here’s a different approach:
+
+### Step-by-Step Guide
+
+1. **Create the Python Script**: Modify the script to read the JSON data from a variable and write environment variables to a file.
+2. **Modify the Dockerfile**: Ensure the Dockerfile captures and uses these environment variables.
+
+#### 1. Create the Python Script
+
+Here’s an example Python script named `set_env_vars.py` that reads JSON data from a variable and writes the environment variables to a file:
+
+```python
+import os
+import json
+
+# JSON data stored in a variable
+json_data = '''
+{
+    "KEY1": "value1",
+    "KEY2": "value2"
+}
+'''
+
+def write_env_vars_to_file(json_str, file_path):
+    data = json.loads(json_str)
+    with open(file_path, 'w') as file:
+        for key, value in data.items():
+            file.write(f"{key}={value}\n")
+
+if __name__ == "__main__":
+    output_file = 'env_vars.sh'
+    write_env_vars_to_file(json_data, output_file)
+```
+
+This script reads the JSON data and writes each key-value pair to a file (`env_vars.sh`) in the format `KEY=value`.
+
+#### 2. Modify the Dockerfile
+
+Here’s how you can modify your Dockerfile to use this script and set the environment variables:
+
+```Dockerfile
+# Use the official Python image from the Docker Hub
+FROM python:3.9-slim
+
+# Install any necessary dependencies
+RUN pip install requests
+
+# Copy the Python script into the container
+COPY set_env_vars.py /usr/src/app/set_env_vars.py
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Run the Python script to set environment variables and write them to a file
+RUN python set_env_vars.py
+
+# Source the environment variables from the file and export them
+RUN set -a && . /usr/src/app/env_vars.sh && set +a
+
+# Optional: Run a placeholder command or start your main application
+CMD ["sh", "-c", "echo $KEY1 && echo $KEY2"]
+```
+
+### Explanation
+
+1. **Copy Files**:
+    - `set_env_vars.py` is copied into the Docker image.
+
+2. **Run the Python Script**:
+    - The `RUN` instruction runs the Python script, which generates the `env_vars.sh` file.
+
+3. **Source the Environment Variables**:
+    - The `RUN set -a && . /usr/src/app/env_vars.sh && set +a` command sources the environment variables from `env_vars.sh` and exports them.
+
+4. **CMD Instruction**:
+    - The `CMD` instruction runs a placeholder command to demonstrate that the environment variables are set. Replace it with your main application.
+
+### Build and Run the Docker Image
+
+Navigate to the directory containing your `Dockerfile` and `set_env_vars.py`, then run the following commands to build and run your Docker image:
+
+```sh
+# Build the Docker image
+docker build -t json-env-docker .
+
+# Run the Docker container
+docker run --rm json-env-docker
+```
+
+### Notes
+
+- **Security Considerations**: Ensure that sensitive information in your JSON variable is handled securely.
+- **Portability**: The `env_vars.sh` file is sourced during the build, and the environment variables are made available at runtime.
+
+By following these steps, you can read JSON data from a variable in a Python script, set environment variables, and use those values in a Dockerfile in a clear and understandable manner.
+
+
+
+
