@@ -1,0 +1,154 @@
+To change the script so that it takes the `service_name` as the first argument, you need to update the script to read the service name from the command line instead of the JSON configuration file. Then, you can pass the `service_name` along with the other parameters to generate the required files.
+
+### Step 1: Update the Python Script
+
+Update the `DockerConfigGenerator` class and the script's main section to handle the `service_name` as a command-line argument.
+
+```python
+import os
+import json
+from jinja2 import Environment, FileSystemLoader
+
+class DockerConfigGenerator:
+    def __init__(self, template_dir=None):
+        if template_dir is None:
+            template_dir = os.path.join(os.path.dirname(__file__), 'templates')
+        self.template_dir = template_dir
+        self.env = Environment(loader=FileSystemLoader(self.template_dir))
+
+    def generate_file(self, template_name, context, output_path):
+        template = self.env.get_template(template_name)
+        content = template.render(context)
+        with open(output_path, 'w') as file:
+            file.write(content)
+        print(f"{os.path.basename(output_path)} generated at {output_path}")
+
+    def generate_dockerfile(self, context, output_path='Dockerfile'):
+        self.generate_file('Dockerfile.j2', context, output_path)
+
+    def generate_build_sh(self, context, output_path='build.sh'):
+        self.generate_file('build.sh.j2', context, output_path)
+        os.chmod(output_path, 0o755)  # Make the build script executable
+
+    def generate_entrypoint_sh(self, context, output_path='entrypoint.sh'):
+        entrypoint_script = """#!/bin/bash
+
+# Execute the main application
+exec "$@"
+"""
+        with open(output_path, 'w') as entrypoint_file:
+            entrypoint_file.write(entrypoint_script)
+        os.chmod(output_path, 0o755)  # Make the entrypoint script executable
+        print(f"entrypoint.sh generated at {output_path}")
+
+    def load_context_from_file(self, context_file, service_name):
+        with open(context_file, 'r') as file:
+            context = json.load(file)
+        context['service_name'] = service_name  # Add the service_name to the context
+        return context
+
+    def generate_all(self, service_name, context_file, target_dir):
+        context = self.load_context_from_file(context_file, service_name)
+        os.makedirs(target_dir, exist_ok=True)
+        self.generate_dockerfile(context, os.path.join(target_dir, 'Dockerfile'))
+        self.generate_build_sh(context, os.path.join(target_dir, 'build.sh'))
+        self.generate_entrypoint_sh(context, os.path.join(target_dir, 'entrypoint.sh'))
+
+# Example usage
+if __name__ == '__main__':
+    import sys
+    if len(sys.argv) != 4:
+        print("Usage: python3 your_script_name.py service_name config.json /app/dir/")
+        sys.exit(1)
+
+    service_name = sys.argv[1]
+    context_file = sys.argv[2]
+    target_dir = sys.argv[3]
+
+    generator = DockerConfigGenerator()
+    generator.generate_all(service_name, context_file, target_dir)
+```
+
+### Step 2: Jinja2 Templates
+
+Ensure your Jinja2 templates remain the same:
+
+#### templates/Dockerfile.j2
+
+```jinja2
+# Use the official base image
+FROM {{ base_image }}
+
+# Copy files into the container
+{% for file in copy_files %}
+COPY {{ file.src }} {{ file.dest }}
+{% endfor %}
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Set environment variables
+{% for var in env_vars %}
+ENV {{ var.name }}={{ var.value }}
+{% endfor %}
+
+# Run commands
+{% for command in run_commands %}
+RUN {{ command }}
+{% endfor %}
+
+# Add arguments (if necessary)
+{% for argument in arguments %}
+ARG {{ argument }}
+{% endfor %}
+
+# Specify the entrypoint
+ENTRYPOINT ["/usr/src/app/entrypoint.sh"]
+```
+
+#### templates/build.sh.j2
+
+```jinja2
+#!/bin/bash
+
+# Build the Docker image
+docker build -t {{ service_name }} .
+
+# Run the Docker container with optional arguments
+docker run --rm {{ service_name }} {{ arguments | join(' ') }}
+```
+
+### Directory Structure
+
+Ensure your directory structure looks like this:
+
+```
+your_project/
+│
+├── templates/
+│   ├── Dockerfile.j2
+│   └── build.sh.j2
+├── config.json
+└── your_script_name.py
+```
+
+### Running the Script
+
+To generate the `Dockerfile`, `build.sh`, and `entrypoint.sh` files, run the script with the following command:
+
+```sh
+python3 your_script_name.py my_service config.json /app/dir/
+```
+
+Replace `your_script_name.py` with the actual name of your Python script file and `my_service` with the actual service name.
+
+### Explanation
+
+1. **Class Definition (`DockerConfigGenerator`)**:
+   - **load_context_from_file**: Reads the context from the JSON file and adds the `service_name` to the context.
+   - **generate_all**: Takes the `service_name` as a parameter, generates the context, and creates the required files using the provided templates.
+
+2. **Jinja2 Template (build.sh.j2)**:
+   - Uses the `service_name` from the context to name the Docker image and run the container.
+
+This setup will generate the required Docker configuration files, including the `Dockerfile`, `build.sh`, and `entrypoint.sh`, based on the provided JSON configuration file and target directory. The `service_name` will be passed as a command-line argument, facilitating the developer running the script with the specified service name.
