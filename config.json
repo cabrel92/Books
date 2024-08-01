@@ -1,0 +1,20 @@
+{
+    "service_name": "my_service",
+    "base_image": "python:3.9-slim",
+    "copy_files": [
+        {"src": "env_vars.txt", "dest": "/usr/src/app/env_vars.txt"},
+        {"src": "export_env_vars.sh", "dest": "/usr/src/app/export_env_vars.sh"}
+    ],
+    "run_commands": [
+        "chmod +x /usr/src/app/export_env_vars.sh",
+        "./export_env_vars.sh"
+    ],
+    "env_vars": [
+        {"name": "ENV_VAR1", "value": "value1"},
+        {"name": "ENV_VAR2", "value": "value2"}
+    ],
+    "arguments": [
+        "--arg1=value1",
+        "--arg2=value2"
+    ]
+}

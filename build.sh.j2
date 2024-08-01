@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# Build the Docker image
+docker build -t {{ service_name }}_image .
+
+# Run the Docker container with optional arguments
+docker run --rm {{ service_name }}_image {{ arguments | join(' ') }}

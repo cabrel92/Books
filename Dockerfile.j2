@@ -1,0 +1,28 @@
+# Use the official base image
+FROM {{ base_image }}
+
+# Copy files into the container
+{% for file in copy_files %}
+COPY {{ file.src }} {{ file.dest }}
+{% endfor %}
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Set environment variables
+{% for var in env_vars %}
+ENV {{ var.name }}={{ var.value }}
+{% endfor %}
+
+# Run commands
+{% for command in run_commands %}
+RUN {{ command }}
+{% endfor %}
+
+# Add arguments (if necessary)
+{% for argument in arguments %}
+ARG {{ argument }}
+{% endfor %}
+
+# Specify the entrypoint
+ENTRYPOINT ["/usr/src/app/{{ service_name }}_entrypoint.sh"]
