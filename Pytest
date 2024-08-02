@@ -1,0 +1,199 @@
+To write a pytest for the `DockerConfigGenerator` class, you need to create tests that check whether the files are generated correctly with the expected content based on a given configuration. 
+
+Here are the steps to achieve this:
+
+1. **Set up the test environment**
+2. **Create a temporary directory for output files**
+3. **Use a sample JSON configuration for testing**
+4. **Compare the generated files with the expected content**
+
+### Directory Structure
+
+Ensure your directory structure includes a `tests` folder:
+
+```
+your_project/
+│
+├── templates/
+│   ├── Dockerfile.j2
+│   └── build.sh.j2
+├── config.json
+├── export_env_vars.sh
+├── your_script_name.py
+└── tests/
+    ├── test_docker_config_generator.py
+    └── expected_outputs/
+        ├── expected_Dockerfile
+        ├── expected_build.sh
+        └── expected_entrypoint.sh
+```
+
+### Sample JSON Configuration
+
+Create a sample `config.json` for testing in the `tests` folder:
+
+```json
+{
+    "service_name": "my_service",
+    "base_image": "python:3.9-slim",
+    "copy_files": [
+        {"src": "env_vars.txt", "dest": "/usr/src/app/env_vars.txt"},
+        {"src": "export_env_vars.sh", "dest": "/usr/src/app/export_env_vars.sh"}
+    ],
+    "run_commands": [
+        "chmod +x /usr/src/app/export_env_vars.sh",
+        "./export_env_vars.sh"
+    ],
+    "env_vars": [
+        {"name": "ENV_VAR1", "value": "value1"},
+        {"name": "ENV_VAR2", "value": "value2"}
+    ],
+    "arguments": [
+        "--arg1=value1",
+        "--arg2=value2"
+    ]
+}
+```
+
+### Expected Output Files
+
+Create the expected output files (`expected_Dockerfile`, `expected_build.sh`, `expected_entrypoint.sh`) in the `tests/expected_outputs` folder.
+
+#### expected_Dockerfile
+
+```Dockerfile
+# Use the official base image
+FROM python:3.9-slim
+
+# Copy files into the container
+COPY env_vars.txt /usr/src/app/env_vars.txt
+COPY export_env_vars.sh /usr/src/app/export_env_vars.sh
+
+# Set the working directory
+WORKDIR /usr/src/app
+
+# Set environment variables
+ENV ENV_VAR1=value1
+ENV ENV_VAR2=value2
+
+# Run commands
+RUN chmod +x /usr/src/app/export_env_vars.sh
+RUN ./export_env_vars.sh
+
+# Specify the entrypoint
+ENTRYPOINT ["/usr/src/app/entrypoint.sh"]
+```
+
+#### expected_build.sh
+
+```sh
+#!/bin/bash
+
+# Build the Docker image
+docker build --build-arg ENV_VAR1=${ENV_VAR1} --build-arg ENV_VAR2=${ENV_VAR2} -t my_service .
+
+# Run the Docker container with optional arguments
+docker run --rm my_service --arg1=value1 --arg2=value2
+```
+
+#### expected_entrypoint.sh
+
+```sh
+#!/bin/bash
+
+# Execute the main application
+exec "$@"
+```
+
+### Test File: test_docker_config_generator.py
+
+Here's the pytest file to test the `DockerConfigGenerator` class:
+
+```python
+import os
+import json
+import tempfile
+import pytest
+from your_script_name import DockerConfigGenerator
+
+@pytest.fixture
+def context():
+    return {
+        "service_name": "my_service",
+        "base_image": "python:3.9-slim",
+        "copy_files": [
+            {"src": "env_vars.txt", "dest": "/usr/src/app/env_vars.txt"},
+            {"src": "export_env_vars.sh", "dest": "/usr/src/app/export_env_vars.sh"}
+        ],
+        "run_commands": [
+            "chmod +x /usr/src/app/export_env_vars.sh",
+            "./export_env_vars.sh"
+        ],
+        "env_vars": [
+            {"name": "ENV_VAR1", "value": "value1"},
+            {"name": "ENV_VAR2", "value": "value2"}
+        ],
+        "arguments": [
+            "--arg1=value1",
+            "--arg2=value2"
+        ]
+    }
+
+@pytest.fixture
+def generator():
+    return DockerConfigGenerator(template_dir=os.path.join(os.path.dirname(__file__), '../templates'))
+
+@pytest.fixture
+def temp_dir():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        yield tmpdir
+
+def test_generate_dockerfile(generator, context, temp_dir):
+    output_path = os.path.join(temp_dir, 'Dockerfile')
+    generator.generate_dockerfile(context, output_path)
+
+    with open(output_path, 'r') as generated_file, open(os.path.join(os.path.dirname(__file__), 'expected_outputs/expected_Dockerfile'), 'r') as expected_file:
+        assert generated_file.read() == expected_file.read()
+
+def test_generate_build_sh(generator, context, temp_dir):
+    output_path = os.path.join(temp_dir, 'build.sh')
+    generator.generate_build_sh(context, output_path)
+
+    with open(output_path, 'r') as generated_file, open(os.path.join(os.path.dirname(__file__), 'expected_outputs/expected_build.sh'), 'r') as expected_file:
+        assert generated_file.read() == expected_file.read()
+
+def test_generate_entrypoint_sh(generator, context, temp_dir):
+    output_path = os.path.join(temp_dir, 'entrypoint.sh')
+    generator.generate_entrypoint_sh(context, output_path)
+
+    with open(output_path, 'r') as generated_file, open(os.path.join(os.path.dirname(__file__), 'expected_outputs/expected_entrypoint.sh'), 'r') as expected_file:
+        assert generated_file.read() == expected_file.read()
+```
+
+### Running the Tests
+
+To run the tests, make sure you have `pytest` installed. If not, install it using:
+
+```sh
+pip install pytest
+```
+
+Run the tests with the following command:
+
+```sh
+pytest tests/test_docker_config_generator.py
+```
+
+### Explanation
+
+1. **Fixtures**:
+   - `context`: Provides the test context.
+   - `generator`: Initializes the `DockerConfigGenerator`.
+   - `temp_dir`: Creates a temporary directory for the output files.
+   
+2. **Tests**:
+   - `test_generate_dockerfile`: Generates the Dockerfile and compares it to the expected output.
+   - `test_generate_build_sh`: Generates the build script and compares it to the expected output.
+   - `test_generate_entrypoint_sh`: Generates the entrypoint script and compares it to the expected output.
+
+This setup ensures that the generated files are compared against expected outputs, verifying the correctness of the `DockerConfigGenerator` class.
