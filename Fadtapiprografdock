@@ -1,0 +1,199 @@
+Certainly! Here is how you can replace PostgreSQL with InfluxDB in your Docker setup.
+
+### Step 1: Create Dockerfiles
+
+#### FastAPI Dockerfile
+Create a `Dockerfile` for the FastAPI application.
+
+```Dockerfile
+# Dockerfile for FastAPI application
+FROM python:3.9-slim
+
+WORKDIR /app
+
+COPY requirements.txt requirements.txt
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY . .
+
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+#### Prometheus Configuration
+Create a `prometheus.yml` configuration file.
+
+```yaml
+# prometheus.yml
+global:
+  scrape_interval: 5s
+
+scrape_configs:
+  - job_name: 'fastapi'
+    static_configs:
+      - targets: ['fastapi:8000']
+```
+
+### Step 2: Create a Docker Compose File
+
+Create a `docker-compose.yml` file to define and run multi-container Docker applications.
+
+```yaml
+version: '3.8'
+
+services:
+  fastapi:
+    build: ./fastapi
+    container_name: fastapi
+    ports:
+      - "8000:8000"
+    depends_on:
+      - influxdb
+    environment:
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=mytoken
+      - INFLUXDB_ORG=myorg
+      - INFLUXDB_BUCKET=mybucket
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+      - influxdb
+
+  influxdb:
+    image: influxdb:latest
+    container_name: influxdb
+    ports:
+      - "8086:8086"
+    environment:
+      - INFLUXDB_DB=metricsdb
+      - INFLUXDB_ADMIN_USER=admin
+      - INFLUXDB_ADMIN_PASSWORD=adminpassword
+      - INFLUXDB_USER=user
+      - INFLUXDB_USER_PASSWORD=userpassword
+
+volumes:
+  influxdb_data:
+```
+
+### Step 3: Modify FastAPI to Use InfluxDB
+
+Modify the FastAPI code to connect to the InfluxDB container using environment variables.
+
+1. **Install dependencies:**
+   ```bash
+   pip install influxdb-client
+   ```
+
+2. **Modify the FastAPI application:**
+   ```python
+   # main.py for FastAPI application
+   from fastapi import FastAPI, HTTPException
+   from prometheus_client import Counter, Histogram, generate_latest
+   import boto3
+   import time
+   import os
+   from influxdb_client import InfluxDBClient, Point, WritePrecision
+
+   app = FastAPI()
+
+   # Set up Prometheus metrics
+   DOWNLOAD_COUNTER = Counter('file_downloads', 'Number of files downloaded')
+   DOWNLOAD_SIZE_HISTOGRAM = Histogram('file_download_size', 'Size of files downloaded in bytes')
+   DOWNLOAD_DURATION_HISTOGRAM = Histogram('file_download_duration', 'Duration of file download in seconds')
+
+   # Set up S3 client
+   s3_client = boto3.client('s3')
+
+   # Set up InfluxDB client
+   influxdb_url = os.getenv("INFLUXDB_URL")
+   influxdb_token = os.getenv("INFLUXDB_TOKEN")
+   influxdb_org = os.getenv("INFLUXDB_ORG")
+   influxdb_bucket = os.getenv("INFLUXDB_BUCKET")
+   influx_client = InfluxDBClient(url=influxdb_url, token=influxdb_token)
+   write_api = influx_client.write_api(write_options=SYNCHRONOUS)
+
+   @app.get("/download/{bucket_name}/{file_key}")
+   async def download_file(bucket_name: str, file_key: str):
+       try:
+           start_time = time.time()
+           response = s3_client.get_object(Bucket=bucket_name, Key=file_key)
+           file_content = response['Body'].read()
+           file_size = len(file_content)
+           duration = time.time() - start_time
+
+           # Update Prometheus metrics
+           DOWNLOAD_COUNTER.inc()
+           DOWNLOAD_SIZE_HISTOGRAM.observe(file_size)
+           DOWNLOAD_DURATION_HISTOGRAM.observe(duration)
+
+           # Store metrics in InfluxDB
+           point = Point("downloads") \
+               .tag("file_key", file_key) \
+               .field("file_size", file_size) \
+               .field("duration", duration) \
+               .time(time.time(), WritePrecision.NS)
+           write_api.write(bucket=influxdb_bucket, org=influxdb_org, record=point)
+
+           return {"file_key": file_key, "file_size": file_size, "duration": duration}
+       except Exception as e:
+           raise HTTPException(status_code=500, detail=str(e))
+
+   @app.get("/metrics")
+   async def metrics():
+       return generate_latest()
+   ```
+
+### Step 4: Build and Run the Docker Containers
+
+1. **Create the directory structure:**
+   ```
+   project-root/
+   ├── fastapi/
+   │   ├── Dockerfile
+   │   ├── main.py
+   │   ├── requirements.txt
+   ├── prometheus/
+   │   ├── prometheus.yml
+   ├── docker-compose.yml
+   ```
+
+2. **Build and run the containers:**
+   ```bash
+   docker-compose up --build
+   ```
+
+### Step 5: Configure Grafana
+
+1. **Open Grafana:**
+   - Access Grafana at `http://localhost:3000`.
+   - Default credentials: `admin`/`admin`.
+
+2. **Add Prometheus as a Data Source:**
+   - Go to Configuration -> Data Sources -> Add data source.
+   - Select Prometheus.
+   - Set the URL to `http://prometheus:9090` and save.
+
+3. **Add InfluxDB as a Data Source:**
+   - Go to Configuration -> Data Sources -> Add data source.
+   - Select InfluxDB.
+   - Set the URL to `http://influxdb:8086` and configure with the appropriate token and bucket.
+
+### Monitoring and Visualization
+
+- **Prometheus:** Collects and stores metrics from the FastAPI server.
+- **Grafana:** Visualizes metrics from Prometheus and InfluxDB.
+- **InfluxDB:** Stores detailed metrics about the downloads.
+
+This setup allows you to run each component in its own Docker container, ensuring isolation and ease of deployment. You can scale and manage each service independently.
